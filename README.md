@@ -29,4 +29,5 @@ The app uses React state + browser localStorage. No Supabase or external databas
 - Company task posting
 - New tasks appear at the top of the feed
 - Data survives refresh via localStorage
- Professionalism audit for Eight2Five
+
+Professionalism audit for Eight2Five
