@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import {
   ArrowLeft,
@@ -21,6 +21,7 @@ import {
   Zap,
   type LucideIcon
 } from "lucide-react";
+import { api, fileToBase64, type AccountUser, type BootstrapData, type Certificate } from "./api";
 import {
   SKILL_OPTIONS,
   type Application,
@@ -30,129 +31,21 @@ import {
   type Task,
   type WorkLevel
 } from "./types";
-import { seedApplications, seedTasks } from "./data";
 
-const KEY = "gradlink-zw-v2";
-const CURRENT_STUDENT_ID = "student-default";
 const fieldOptions: Array<"All" | Skill> = ["All", ...SKILL_OPTIONS];
 type AccountType = "student" | "company" | "admin";
 type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy };
 type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack };
-type CertificateMeta = { id: string; name: string; size: number; type: string; uploadedAt: string };
+type CertificateMeta = Certificate;
 const levels: WorkLevel[] = ["Entry level", "Intermediate", "Professional", "Advanced"];
 const defaultPolicy: InterviewPolicy = { studentCompletedTasks: 10, companyFilledTasks: 10, minimumInterviewInvites: 5 };
 const defaultStudentProfile: StudentProfileData = {
-  name: "Tino Moyo",
-  school: "HIT Software 3rd Year",
-  location: "Harare",
+  name: "",
+  school: "",
+  location: "",
   studyField: "Coding",
   track: "earning"
 };
-
-function loadStore(): Store {
-  try {
-    const raw = localStorage.getItem(KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<Store>;
-      if (Array.isArray(parsed.tasks) && Array.isArray(parsed.applications)) {
-        return {
-          tasks: parsed.tasks.map((task) => {
-            const seedTask = seedTasks.find((seed) => seed.id === task.id);
-            return { ...task, level: seedTask?.level || task.level || "Intermediate" };
-          }),
-          applications: parsed.applications.map((application) => {
-            const isSeedApplication = /^a\d+$/.test(application.id);
-            return {
-              ...application,
-              studentName: isSeedApplication
-                ? ["Ruth Ndlovu", "Simba Chitepo", "Elena Dube"][(Number(application.id.slice(1)) - 1) % 3]
-                : application.studentName || "Tino Moyo",
-              studentId: isSeedApplication ? `seed-${application.id}` : application.studentId || `legacy-${application.id}`,
-              studentTrack: application.studentTrack || "earning",
-              studentStudyField: application.studentStudyField || "Coding",
-              status: application.status || "applied",
-              interviewInvited: application.interviewInvited || false
-            };
-          }),
-          policy: { ...defaultPolicy, ...parsed.policy }
-        };
-      }
-    }
-  } catch (error) {
-    console.error("Could not load saved GradLink data", error);
-  }
-  return { tasks: seedTasks, applications: seedApplications, policy: defaultPolicy };
-}
-
-function loadStudentProfile(): StudentProfileData {
-  try {
-    const raw = localStorage.getItem(`${KEY}-student-profile`);
-    if (raw) return { ...defaultStudentProfile, ...JSON.parse(raw) as Partial<StudentProfileData> };
-  } catch (error) {
-    console.error("Could not load the saved student profile", error);
-  }
-  return defaultStudentProfile;
-}
-
-function loadCertificates(): CertificateMeta[] {
-  try {
-    const raw = localStorage.getItem(`${KEY}-certificates`);
-    return raw ? JSON.parse(raw) as CertificateMeta[] : [];
-  } catch (error) {
-    console.error("Could not load saved certificate details", error);
-    return [];
-  }
-}
-
-function openCertificateDatabase(): Promise<IDBDatabase> {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open(`${KEY}-certificate-files`, 1);
-    request.onupgradeneeded = () => {
-      request.result.createObjectStore("certificates", { keyPath: "id" });
-    };
-    request.onsuccess = () => resolve(request.result);
-    request.onerror = () => reject(request.error ?? new Error("Could not open certificate storage"));
-  });
-}
-
-async function saveCertificateFile(id: string, file: File): Promise<void> {
-  const database = await openCertificateDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction("certificates", "readwrite");
-    transaction.objectStore("certificates").put({ id, file });
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("Could not save certificate file"));
-    transaction.onabort = () => reject(transaction.error ?? new Error("Saving certificate file was cancelled"));
-  }).finally(() => database.close());
-}
-
-async function readCertificateFile(id: string): Promise<Blob> {
-  const database = await openCertificateDatabase();
-  return new Promise((resolve, reject) => {
-    const request = database.transaction("certificates", "readonly").objectStore("certificates").get(id);
-    request.onsuccess = () => {
-      database.close();
-      const file = request.result?.file;
-      if (file instanceof Blob) resolve(file);
-      else reject(new Error("Certificate file is no longer available"));
-    };
-    request.onerror = () => {
-      database.close();
-      reject(request.error ?? new Error("Could not read certificate file"));
-    };
-  });
-}
-
-async function deleteCertificateFile(id: string): Promise<void> {
-  const database = await openCertificateDatabase();
-  await new Promise<void>((resolve, reject) => {
-    const transaction = database.transaction("certificates", "readwrite");
-    transaction.objectStore("certificates").delete(id);
-    transaction.oncomplete = () => resolve();
-    transaction.onerror = () => reject(transaction.error ?? new Error("Could not delete certificate file"));
-    transaction.onabort = () => reject(transaction.error ?? new Error("Deleting certificate file was cancelled"));
-  }).finally(() => database.close());
-}
 
 function money(task: Task) {
   return `$${task.budget} ${task.payment === "EcoCash" ? "EcoCash" : "USD"}`;
@@ -175,6 +68,90 @@ function Toast({ message, error = false, onClose }: { message: string; error?: b
       {message}
       <button aria-label="Close notification" onClick={onClose}><X size={16} /></button>
     </motion.div>
+  );
+}
+
+function AuthForm({ onAuthenticate, toast }: {
+  onAuthenticate: (mode: "login" | "register", values: Record<string, string>) => Promise<void>;
+  toast: (message: string, error?: boolean) => void;
+}) {
+  const [mode, setMode] = useState<"login" | "register">("login");
+  const [role, setRole] = useState<"student" | "company">("student");
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [name, setName] = useState("");
+  const [school, setSchool] = useState("");
+  const [location, setLocation] = useState("");
+  const [studyField, setStudyField] = useState<Skill>("Coding");
+  const [track, setTrack] = useState<StudentTrack>("earning");
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      await onAuthenticate(mode, {
+        email: email.trim(),
+        password,
+        role,
+        name: name.trim(),
+        school: school.trim(),
+        location: location.trim(),
+        studyField,
+        track
+      });
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not authenticate.", true);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <main className="page auth-page">
+      <div className="page-title">
+        <span className="eyebrow">{mode === "login" ? "WELCOME BACK" : "JOIN GRADLINK"}</span>
+        <h1>{mode === "login" ? "Sign in to your account" : "Create your account"}</h1>
+        <p>Student and company workspaces are protected by your account. Admin accounts are created by the platform owner.</p>
+      </div>
+      <form className="form-card" onSubmit={submit}>
+        {mode === "register" && <>
+          <label>Account type
+            <select value={role} onChange={(event) => setRole(event.target.value as "student" | "company")}>
+              <option value="student">Student</option>
+              <option value="company">Company</option>
+            </select>
+          </label>
+          <label>{role === "company" ? "Company name" : "Full name"}
+            <input required minLength={2} maxLength={100} value={name} onChange={(event) => setName(event.target.value)} />
+          </label>
+          {role === "student" && <>
+            <label>School and course<input required maxLength={160} value={school} onChange={(event) => setSchool(event.target.value)} /></label>
+            <label>Location<input required maxLength={100} value={location} onChange={(event) => setLocation(event.target.value)} /></label>
+            <label>Field of study
+              <select value={studyField} onChange={(event) => setStudyField(event.target.value as Skill)}>
+                {SKILL_OPTIONS.map((field) => <option key={field}>{field}</option>)}
+              </select>
+            </label>
+            <label>Account goal
+              <select value={track} onChange={(event) => setTrack(event.target.value as StudentTrack)}>
+                <option value="earning">Earn through tasks</option>
+                <option value="interview">Earn and pursue interviews</option>
+              </select>
+            </label>
+          </>}
+        </>}
+        <label>Email<input required type="email" autoComplete="email" maxLength={254} value={email} onChange={(event) => setEmail(event.target.value)} /></label>
+        <label>Password<input required type="password" autoComplete={mode === "login" ? "current-password" : "new-password"} minLength={mode === "login" ? 1 : 10} maxLength={128} value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <button className="primary full" disabled={busy} type="submit">{busy ? "Please wait..." : mode === "login" ? "Sign in" : "Create account"}</button>
+        <p className="form-note">
+          {mode === "login" ? "New to GradLink? " : "Already registered? "}
+          <button type="button" className="text-btn" onClick={() => setMode((current) => current === "login" ? "register" : "login")}>
+            {mode === "login" ? "Create an account" : "Sign in instead"}
+          </button>
+        </p>
+      </form>
+    </main>
   );
 }
 
@@ -606,12 +583,11 @@ function CompanyDashboard({ tasks, go }: { tasks: Task[]; go: (page: string) => 
   );
 }
 
-function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreateTask }: {
+function CompanyJobs({ tasks, applications, companyName, onCreateTask }: {
   tasks: Task[];
   applications: Application[];
   companyName: string;
-  onCompanyName: (name: string) => void;
-  onCreateTask: (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => void;
+  onCreateTask: (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => Promise<void>;
 }) {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -629,7 +605,7 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
       setError("Enter a company name, complete task details, a positive budget and deadline.");
       return;
     }
-    onCreateTask({
+    void onCreateTask({
       company: companyName.trim(),
       title: title.trim(),
       description: description.trim(),
@@ -651,10 +627,10 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
       <div className="page-title">
         <span className="eyebrow">COMPANY LISTINGS</span>
         <h1>Post and manage tasks</h1>
-        <p>Listings are saved in this browser and appear in the student marketplace.</p>
+        <p>Listings are checked by the server and stored in PostgreSQL until an administrator verifies them.</p>
       </div>
       <form className="form-card" onSubmit={submit}>
-        <label>Company name<input required value={companyName} onChange={(event) => onCompanyName(event.target.value)} placeholder="Your company" /></label>
+        <label>Company name<input readOnly value={companyName} /></label>
         <label>Task title<input required value={title} onChange={(event) => setTitle(event.target.value)} placeholder="e.g. Create a social media campaign" /></label>
         <label>Task brief<textarea required minLength={10} value={description} onChange={(event) => setDescription(event.target.value)} placeholder="Describe the work and expected deliverables." /></label>
         <div className="two-col">
@@ -670,7 +646,7 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
         </div>
         {error && <p className="field-error" role="alert">{error}</p>}
         <button className="primary full" type="submit">Publish task listing</button>
-        <p className="form-note">Prototype only: this does not collect or hold real escrow funds.</p>
+        <p className="form-note">Task postings are saved in PostgreSQL. The platform does not collect or hold escrow funds.</p>
       </form>
       <section className="section">
         <h2>Your listings</h2>
@@ -876,18 +852,11 @@ function AdminDashboard({ tasks, policy, onSetPolicy, onSetVerified, onDeleteTas
 }
 
 export function App() {
-  const [store, setStore] = useState<Store>(loadStore);
-  const [studentProfile, setStudentProfile] = useState<StudentProfileData>(loadStudentProfile);
-  const [certificates, setCertificates] = useState<CertificateMeta[]>(loadCertificates);
-  const [companyName, setCompanyName] = useState(() => {
-    try {
-      return localStorage.getItem(`${KEY}-company-name`) || "My Company";
-    } catch (error) {
-      console.error("Could not load the saved company name", error);
-      return "My Company";
-    }
-  });
-  const [account, setAccount] = useState<AccountType>("student");
+  const [store, setStore] = useState<Store>({ tasks: [], applications: [], policy: defaultPolicy });
+  const [studentProfile, setStudentProfile] = useState<StudentProfileData>(defaultStudentProfile);
+  const [certificates, setCertificates] = useState<CertificateMeta[]>([]);
+  const [companyName, setCompanyName] = useState("My Company");
+  const [user, setUser] = useState<AccountUser | null>(null);
   const [page, setPage] = useState("tasks");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | Skill>("All");
@@ -896,44 +865,27 @@ export function App() {
   const [modal, setModal] = useState<Task | null>(null);
   const [toastState, setToastState] = useState<{ m: string; e?: boolean } | null>(null);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem(KEY, JSON.stringify(store));
-    } catch (error) {
-      console.error("Could not save GradLink data", error);
-      setToastState({ m: "Could not save changes in this browser", e: true });
-    }
-  }, [store]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${KEY}-student-profile`, JSON.stringify(studentProfile));
-    } catch (error) {
-      console.error("Could not save the student profile", error);
-      setToastState({ m: "Could not save the profile in this browser", e: true });
-    }
-  }, [studentProfile]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${KEY}-certificates`, JSON.stringify(certificates));
-    } catch (error) {
-      console.error("Could not save certificate details", error);
-      setToastState({ m: "Could not save certificate details in this browser", e: true });
-    }
-  }, [certificates]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${KEY}-company-name`, companyName);
-    } catch (error) {
-      console.error("Could not save the company name", error);
-      setToastState({ m: "Could not save the company name in this browser", e: true });
-    }
-  }, [companyName]);
-  useEffect(() => {
-    const t = window.setTimeout(() => setLoading(false), 600);
-    return () => window.clearTimeout(t);
+  const toast = (m: string, e?: boolean) => setToastState({ m, e });
+  const account: AccountType = user?.role || "student";
+
+  const refreshData = useCallback(async () => {
+    const data = await api<BootstrapData>("/api/bootstrap");
+    setUser(data.user);
+    setStore({ tasks: data.tasks, applications: data.applications, policy: data.policy });
+    setCertificates(data.certificates);
+    setCompanyName(data.companyName || "My Company");
+    setStudentProfile(data.profile || defaultStudentProfile);
+    return data;
   }, []);
 
-  const toast = (m: string, e?: boolean) => setToastState({ m, e });
+  useEffect(() => {
+    void refreshData()
+      .catch((error: unknown) => {
+        console.error("Could not load GradLink from PostgreSQL", error);
+        toast(error instanceof Error ? error.message : "Could not load GradLink data.", true);
+      })
+      .finally(() => setLoading(false));
+  }, [refreshData]);
 
   const go = (p: string) => {
     setModal(null);
@@ -941,130 +893,125 @@ export function App() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
-  const addTask = (task: Task) => setStore((s) => ({ ...s, tasks: [task, ...s.tasks] }));
+  const authenticate = async (mode: "login" | "register", values: Record<string, string>) => {
+    await api(mode === "login" ? "/api/auth/login" : "/api/auth/register", {
+      method: "POST",
+      body: JSON.stringify(mode === "login"
+        ? { email: values.email, password: values.password }
+        : values)
+    });
+    const data = await refreshData();
+    const nextPage = data.user?.role === "company" ? "company-dashboard"
+      : data.user?.role === "admin" ? "admin-overview" : "tasks";
+    go(nextPage);
+    toast(mode === "login" ? "Signed in successfully" : "Account created successfully");
+  };
+
+  const logout = async () => {
+    try {
+      await api("/api/auth/logout", { method: "POST" });
+      const data = await refreshData();
+      go("tasks");
+      toast("Signed out");
+      return data;
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not sign out.", true);
+    }
+  };
 
   const apply = (task: Task) => {
+    if (!user) {
+      toast("Sign in or create a student account to apply");
+      go("auth");
+      return;
+    }
+    if (user.role !== "student") {
+      toast("Only student accounts can apply for tasks", true);
+      return;
+    }
     if (studentProfile.track === "interview" && task.level !== "Professional" && task.level !== "Advanced") {
       toast("Interview-pathway applications require Professional or Advanced work", true);
       return;
     }
-    if (store.applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID)) {
+    if (store.applications.some((application) => application.taskId === task.id && application.studentId === user.id)) {
       toast("This student has already submitted an application for this task");
       return;
     }
     setModal(task);
   };
 
-  const submitApplication = (proposal: string, days: number, portfolio: string) => {
+  const submitApplication = async (proposal: string, days: number, portfolio: string) => {
     if (!modal) return;
-
-    setStore((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => t.id === modal.id ? { ...t, applicants: t.applicants + 1 } : t),
-      applications: [...s.applications, {
-        id: `a-${Date.now()}`,
-        taskId: modal.id,
-        studentId: CURRENT_STUDENT_ID,
-        studentName: studentProfile.name,
-        studentTrack: studentProfile.track,
-        studentStudyField: studentProfile.studyField,
-        proposal,
-        deliveryDays: days,
-        portfolio,
-        createdAt: new Date().toISOString(),
-        status: "applied"
-      }]
-    }));
-
-    setModal(null);
-    toast("Application submitted successfully");
-  };
-
-  const createCompanyTask = (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => {
-    addTask({
-      ...task,
-      id: `company-${Date.now()}`,
-      applicants: 0,
-      match: 80,
-      rating: 0,
-      verified: false,
-      mine: true
-    });
-    toast("Task listing published and sent for admin verification");
-  };
-
-  const setApplicationStatus = (applicationId: string, status: Application["status"]) => {
-    const existing = store.applications.find((application) => application.id === applicationId);
-    if (!existing) {
-      toast("Could not find this application", true);
-      return;
+    try {
+      await api(`/api/tasks/${encodeURIComponent(modal.id)}/applications`, {
+        method: "POST", body: JSON.stringify({ proposal, deliveryDays: days, portfolio })
+      });
+      setModal(null);
+      await refreshData();
+      toast("Application submitted successfully");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not submit your application.", true);
     }
-    const validTransition = status === "accepted" || status === "rejected"
-      ? existing.status === "applied"
-      : status === "completed" && existing.status === "accepted";
-    if (!validTransition) {
-      toast("That application status change is not available", true);
-      return;
+  };
+
+  const createCompanyTask = async (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => {
+    try {
+      await api("/api/tasks", { method: "POST", body: JSON.stringify(task) });
+      await refreshData();
+      toast("Task listing published and sent for admin verification");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not publish this task.", true);
     }
-    setStore((current) => ({
-      ...current,
-      applications: current.applications.map((application) => application.id === applicationId ? { ...application, status } : application)
-    }));
-    toast(status === "completed" ? "Work marked complete" : `Application ${status.replace("-", " ")}`);
   };
 
-  const inviteToInterview = (applicationId: string) => {
-    const application = store.applications.find((item) => item.id === applicationId);
-    const task = application ? store.tasks.find((item) => item.id === application.taskId) : undefined;
-    if (!application || !task) {
-      toast("Could not find the application or task", true);
-      return;
+  const setApplicationStatus = async (applicationId: string, status: Application["status"]) => {
+    try {
+      await api(`/api/applications/${applicationId}/status`, { method: "PATCH", body: JSON.stringify({ status }) });
+      await refreshData();
+      toast(status === "completed" ? "Work marked complete" : `Application ${status.replace("-", " ")}`);
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not update application.", true);
     }
-    const completedTasks = new Set(store.applications
-      .filter((item) => item.studentId === application.studentId && item.status === "completed")
-      .filter((item) => store.tasks.find((candidate) => candidate.id === item.taskId)?.skill === task.skill)
-      .map((item) => item.taskId)).size;
-    const companyCompleted = new Set(store.applications
-      .filter((item) => item.status === "completed")
-      .filter((item) => {
-        const completedTask = store.tasks.find((candidate) => candidate.id === item.taskId);
-        return completedTask?.mine && completedTask.skill === task.skill;
-      })
-      .map((item) => item.taskId)).size;
-    if (application.studentTrack !== "interview"
-      || (task.level !== "Professional" && task.level !== "Advanced")
-      || completedTasks < store.policy.studentCompletedTasks
-      || companyCompleted < store.policy.companyFilledTasks) {
-      toast("This applicant has not met the interview eligibility rules", true);
-      return;
+  };
+
+  const inviteToInterview = async (applicationId: string) => {
+    try {
+      await api(`/api/applications/${applicationId}/interview-invitation`, { method: "POST" });
+      await refreshData();
+      toast("Interview invitation sent");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not send the interview invitation.", true);
     }
-    setStore((current) => ({
-      ...current,
-      applications: current.applications.map((item) => item.id === applicationId ? { ...item, interviewInvited: true } : item)
-    }));
-    toast("Interview invitation sent");
   };
 
-  const setTaskVerified = (taskId: string, verified: boolean) => {
-    setStore((current) => ({
-      ...current,
-      tasks: current.tasks.map((task) => task.id === taskId ? { ...task, verified } : task)
-    }));
-    toast(verified ? "Task listing verified" : "Task listing verification removed");
+  const setTaskVerified = async (taskId: string, verified: boolean) => {
+    try {
+      await api(`/api/admin/tasks/${encodeURIComponent(taskId)}/verification`, { method: "PATCH", body: JSON.stringify({ verified }) });
+      await refreshData();
+      toast(verified ? "Task listing verified" : "Task listing verification removed");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not update task verification.", true);
+    }
   };
 
-  const deleteTask = (taskId: string) => {
-    setStore((current) => ({
-      ...current,
-      tasks: current.tasks.filter((task) => task.id !== taskId),
-      applications: current.applications.filter((application) => application.taskId !== taskId)
-    }));
-    toast("Task listing and its applications removed");
+  const deleteTask = async (taskId: string) => {
+    try {
+      await api(`/api/admin/tasks/${encodeURIComponent(taskId)}`, { method: "DELETE" });
+      await refreshData();
+      toast("Task listing and its applications removed");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not remove task listing.", true);
+    }
   };
 
-  const savePolicy = (policy: InterviewPolicy) => {
-    setStore((current) => ({ ...current, policy }));
-    toast("Interview thresholds saved");
+  const savePolicy = async (policy: InterviewPolicy) => {
+    try {
+      await api("/api/admin/policy", { method: "PATCH", body: JSON.stringify(policy) });
+      await refreshData();
+      toast("Interview thresholds saved");
+    } catch (error) {
+      toast(error instanceof Error ? error.message : "Could not save interview thresholds.", true);
+    }
   };
 
   const uploadCertificates = async (files: FileList | null) => {
@@ -1075,47 +1022,46 @@ export function App() {
         toast(`${file.name}: choose a PDF, JPG or PNG up to 5 MB`, true);
         continue;
       }
-      const certificate = {
-        id: `certificate-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        uploadedAt: new Date().toISOString()
-      };
       try {
-        await saveCertificateFile(certificate.id, file);
-        accepted.push(certificate);
+        const data = await fileToBase64(file);
+        const result = await api<{ certificate: CertificateMeta }>("/api/certificates", {
+          method: "POST", body: JSON.stringify({ name: file.name, type: file.type, data })
+        });
+        accepted.push(result.certificate);
       } catch (error) {
         console.error("Could not store certificate file", error);
-        toast(`Could not upload ${file.name}`, true);
+        toast(error instanceof Error ? `${file.name}: ${error.message}` : `Could not upload ${file.name}`, true);
       }
     }
     if (accepted.length) {
-      setCertificates((current) => [...current, ...accepted]);
+      await refreshData();
       toast(`${accepted.length} certificate${accepted.length === 1 ? "" : "s"} uploaded`);
     }
   };
 
   const removeCertificate = async (certificate: CertificateMeta) => {
     try {
-      await deleteCertificateFile(certificate.id);
-      setCertificates((current) => current.filter((item) => item.id !== certificate.id));
+      await api(`/api/certificates/${certificate.id}`, { method: "DELETE" });
+      await refreshData();
       toast("Certificate removed");
     } catch (error) {
       console.error("Could not remove certificate", error);
-      toast("Could not remove the certificate file", true);
+      toast(error instanceof Error ? error.message : "Could not remove the certificate file", true);
     }
   };
 
-  const openCertificate = async (certificate: CertificateMeta) => {
+  const openCertificate = (certificate: CertificateMeta) => {
+    window.open(`/api/certificates/${certificate.id}`, "_blank", "noopener,noreferrer");
+  };
+
+  const saveStudentProfile = async (profile: StudentProfileData) => {
     try {
-      const file = await readCertificateFile(certificate.id);
-      const url = URL.createObjectURL(file);
-      window.open(url, "_blank", "noopener,noreferrer");
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const result = await api<{ user: AccountUser }>("/api/profile", { method: "PATCH", body: JSON.stringify(profile) });
+      setStudentProfile(profile);
+      setUser(result.user);
+      toast("Profile saved");
     } catch (error) {
-      console.error("Could not open certificate", error);
-      toast("Could not open the certificate file", true);
+      toast(error instanceof Error ? error.message : "Could not save the profile.", true);
     }
   };
 
@@ -1138,7 +1084,9 @@ export function App() {
 
   const detailId = page.startsWith("detail:") ? page.slice(7) : null;
   const detailTask = detailId ? store.tasks.find((task) => task.id === detailId) : null;
-  const applied = detailTask ? store.applications.some((application) => application.taskId === detailTask.id && application.studentId === CURRENT_STUDENT_ID) : false;
+  const applied = detailTask && user
+    ? store.applications.some((application) => application.taskId === detailTask.id && application.studentId === user.id)
+    : false;
 
   if (loading) {
     return (
@@ -1152,11 +1100,11 @@ export function App() {
   }
 
   const companyTasks = store.tasks.filter((task) => task.mine === true);
-  const studentApplications = store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID);
+  const studentApplications = user ? store.applications.filter((application) => application.studentId === user.id) : [];
   const completedByField = Object.fromEntries(SKILL_OPTIONS.map((skill) => [
     skill,
     new Set(store.applications
-      .filter((application) => application.studentId === CURRENT_STUDENT_ID && application.status === "completed")
+      .filter((application) => application.studentId === user?.id && application.status === "completed")
       .filter((application) => store.tasks.find((task) => task.id === application.taskId)?.skill === skill)
       .map((application) => application.taskId)).size
   ])) as Partial<Record<Skill, number>>;
@@ -1174,6 +1122,7 @@ export function App() {
     ? SKILL_OPTIONS.filter((skill) => (completedByField[skill] || 0) >= store.policy.studentCompletedTasks
       && (companyCompletedByField[skill] || 0) >= store.policy.companyFilledTasks)
     : [];
+  const initials = (user?.name || "?").split(/\s+/).map((part) => part[0]).slice(0, 2).join("").toUpperCase();
 
   return (
     <div className="app-shell">
@@ -1182,29 +1131,17 @@ export function App() {
           GradLink <span>ZW</span><i /></button>
 
         <div className="top-actions">
-          <div className="account-switcher" aria-label="Account type selector">
-            {(["student", "company", "admin"] as AccountType[]).map((type) => (
-              <button
-                key={type}
-                type="button"
-                className={account === type ? "account-pill active" : "account-pill"}
-                onClick={() => {
-                  setAccount(type);
-                  if (type === "student") setPage("tasks");
-                  if (type === "company") setPage("company-dashboard");
-                  if (type === "admin") setPage("admin-overview");
-                }}
-              >
-                {type === "student" ? "Student" : type === "company" ? "Company" : "Admin"}
-              </button>
-            ))}
-          </div>
-          <button aria-label="Notifications" onClick={() => toast("No new notifications")}><Bell size={20} /></button>
-          <Avatar initials={account === "student" ? "TM" : account === "company" ? "C" : "A"} />
+          {user ? <>
+            <span className="account-pill active">{user.role === "admin" ? "Admin" : user.role === "company" ? "Company" : "Student"}</span>
+            <button type="button" className="text-btn" onClick={() => void logout()}>Sign out</button>
+            <Avatar initials={initials} />
+          </> : <button type="button" className="primary" onClick={() => go("auth")}>Sign in</button>}
         </div>
       </header>
 
-      {account === "student" && (
+      {page === "auth" && <AuthForm onAuthenticate={authenticate} toast={toast} />}
+
+      {page !== "auth" && account === "student" && (
         <>
           {page === "tasks" && (
             <main className="page feed-page">
@@ -1301,26 +1238,28 @@ export function App() {
           )}
 
           {page === "profile" && (
-            <StudentProfile
-              toast={toast}
-              profile={studentProfile}
-              applications={studentApplications}
-              tasks={store.tasks}
-              policy={store.policy}
-              completedByField={completedByField}
-              interviewFields={interviewFields}
-              certificates={certificates}
-              onSave={setStudentProfile}
-              onUploadCertificate={uploadCertificates}
-              onRemoveCertificate={removeCertificate}
-              onOpenCertificate={openCertificate}
-            />
+            user
+              ? <StudentProfile
+                  toast={toast}
+                  profile={studentProfile}
+                  applications={studentApplications}
+                  tasks={store.tasks}
+                  policy={store.policy}
+                  completedByField={completedByField}
+                  interviewFields={interviewFields}
+                  certificates={certificates}
+                  onSave={(profile) => void saveStudentProfile(profile)}
+                  onUploadCertificate={uploadCertificates}
+                  onRemoveCertificate={removeCertificate}
+                  onOpenCertificate={openCertificate}
+                />
+              : <main className="page"><div className="empty"><UserRound /><h2>Your student profile</h2><p>Sign in or create a student account to manage your profile and certificates.</p><button className="primary" onClick={() => go("auth")}>Sign in or register</button></div></main>
           )}
           {detailTask && <Detail task={detailTask} applied={applied} interviewTrack={studentProfile.track === "interview"} onBack={() => go("tasks")} onApply={() => apply(detailTask)} />}
         </>
       )}
 
-      {account === "company" && (
+      {page !== "auth" && account === "company" && (
         <>
           {page === "company-dashboard" && <CompanyDashboard tasks={companyTasks} go={go} />}
           {page === "company-jobs" && (
@@ -1328,7 +1267,6 @@ export function App() {
               tasks={companyTasks}
               applications={store.applications}
               companyName={companyName}
-              onCompanyName={setCompanyName}
               onCreateTask={createCompanyTask}
             />
           )}
@@ -1345,7 +1283,7 @@ export function App() {
         </>
       )}
 
-      {account === "admin" && (
+      {page !== "auth" && account === "admin" && (
         <>
           {page === "admin-overview" && <AdminDashboard tasks={store.tasks} policy={store.policy} onSetPolicy={savePolicy} onSetVerified={setTaskVerified} onDeleteTask={deleteTask} />}
           {page === "admin-students" && (
@@ -1378,11 +1316,11 @@ export function App() {
         </>
       )}
 
-      {!detailTask && account === "student" && !["tasks", "search", "profile"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("tasks")}><ArrowLeft /> Back</button></main>}
-      {!detailTask && account === "company" && !["company-dashboard", "company-jobs", "company-applicants"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("company-dashboard")}><ArrowLeft /> Back</button></main>}
-      {!detailTask && account === "admin" && !["admin-overview", "admin-students", "admin-companies", "admin-moderation"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("admin-overview")}><ArrowLeft /> Back</button></main>}
+      {page !== "auth" && !detailTask && account === "student" && !["tasks", "search", "profile"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("tasks")}><ArrowLeft /> Back</button></main>}
+      {page !== "auth" && !detailTask && account === "company" && !["company-dashboard", "company-jobs", "company-applicants"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("company-dashboard")}><ArrowLeft /> Back</button></main>}
+      {page !== "auth" && !detailTask && account === "admin" && !["admin-overview", "admin-students", "admin-companies", "admin-moderation"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("admin-overview")}><ArrowLeft /> Back</button></main>}
 
-      {!detailTask && <BottomNav account={account} page={page} go={go} />}
+      {page !== "auth" && !detailTask && <BottomNav account={account} page={page} go={go} />}
 
       <AnimatePresence>{modal && <ApplyModal task={modal} onClose={() => setModal(null)} onSubmit={submitApplication} />}</AnimatePresence>
       <AnimatePresence>{toastState && <Toast message={toastState.m} error={toastState.e} onClose={() => setToastState(null)} />}</AnimatePresence>
