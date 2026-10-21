@@ -71,6 +71,14 @@ export type Application = {
   deliveryDays: number;
   portfolio: string;
   createdAt: string;
-  status: "applied" | "accepted" | "rejected" | "completed" | "interview-invited";
+  status: "applied" | "accepted" | "submitted" | "rejected" | "completed" | "withdrawn" | "interview-invited";
   interviewInvited?: boolean;
+  rating?: number;
+  ratingFeedback?: string;
+  hiredAgain?: boolean;
+  submittedWork?: string;
+  submittedAt?: string;
+  companyFeedback?: string;
+  paymentRecordedAt?: string;
+  events?: Array<{ id: string; type: "applied" | "accepted" | "rejected" | "work-submitted" | "completed" | "payment-recorded" | "interview-invited" | "withdrawn" | "reviewed"; actor: "student" | "company"; description: string; at: string }>;
 };
