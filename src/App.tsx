@@ -1,4 +1,4 @@
-﻿import { useEffect, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import {
   ArrowLeft,
@@ -22,8 +22,11 @@ import {
   Link2,
   Layers3,
   Menu,
+  Moon,
+  Monitor,
   Search,
   ShieldCheck,
+  Sun,
   Star,
   Target,
   UnlockKeyhole,
@@ -47,7 +50,19 @@ import {
 import { seedApplications, seedTasks } from "./data";
 
 const KEY = "gradlink-zw-v2";
+const THEME_KEY = "gradlink-appearance";
+type ThemePreference = "light" | "dark" | "system";
 const CURRENT_STUDENT_ID = "student-default";
+
+function loadThemePreference(): ThemePreference {
+  try {
+    const saved = localStorage.getItem(THEME_KEY);
+    return saved === "light" || saved === "dark" || saved === "system" ? saved : "system";
+  } catch (error) {
+    console.warn("Could not read appearance preference", error);
+    return "system";
+  }
+}
 const fieldOptions: Array<"All" | Skill> = ["All", ...SKILL_OPTIONS];
 type AccountType = "student" | "company" | "admin";
 type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy };
@@ -230,7 +245,15 @@ function initialsFromName(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("") || "ST";
 }
 
-function DashboardNavigation({ account, page, go, notificationCount = 0, open, onToggle }: { account: AccountType; page: string; go: (p: string) => void; notificationCount?: number; open: boolean; onToggle: () => void }) {
+function ThemeModeControl({ preference, onChange, className = "" }: { preference: ThemePreference; onChange: (preference: ThemePreference) => void; className?: string }) {
+  return <div className={`theme-mode-control ${className}`} role="group" aria-label="Appearance theme">
+    <button type="button" className={preference === "light" ? "theme-mode-option selected" : "theme-mode-option"} aria-label="Use light theme" aria-pressed={preference === "light"} title="Light theme" onClick={() => onChange("light")}><Sun size={15} /></button>
+    <button type="button" className={preference === "dark" ? "theme-mode-option selected" : "theme-mode-option"} aria-label="Use dark theme" aria-pressed={preference === "dark"} title="Dark theme" onClick={() => onChange("dark")}><Moon size={15} /></button>
+    <button type="button" className={preference === "system" ? "theme-mode-option selected" : "theme-mode-option"} aria-label="Use system theme" aria-pressed={preference === "system"} title="Follow system theme" onClick={() => onChange("system")}><Monitor size={14} /></button>
+  </div>;
+}
+
+function DashboardNavigation({ account, page, go, notificationCount = 0, open, onToggle, themePreference, onThemeChange }: { account: AccountType; page: string; go: (p: string) => void; notificationCount?: number; open: boolean; onToggle: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
   const items: Array<[string, string, LucideIcon]> =
     account === "student"
       ? [
@@ -258,7 +281,7 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
     {open && <button type="button" className="nav-backdrop" aria-label="Close side panel" onClick={onToggle} />}
     {!open && <button type="button" className="side-panel-toggle" aria-label="Open side panel" aria-expanded={false} aria-controls="workspace-side-panel" onClick={onToggle}><Menu size={21} /></button>}
     <nav id="workspace-side-panel" className={`app-nav ${open ? "is-open" : "is-closed"}`} aria-label={`${account} navigation`} aria-hidden={!open}>
-      <div className="nav-heading">{account === "student" ? "STUDENT WORKSPACE" : account === "company" ? "COMPANY WORKSPACE" : "ADMIN CONSOLE"}</div>
+      <div className="nav-heading"><span>{account === "student" ? "STUDENT WORKSPACE" : account === "company" ? "COMPANY WORKSPACE" : "ADMIN CONSOLE"}</span><ThemeModeControl preference={themePreference} onChange={onThemeChange} /></div>
       {items.map(([id, label, Icon]) => (
         <button key={id} type="button" tabIndex={open ? 0 : -1} className={page === id ? "active" : ""} aria-current={page === id ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
           <Icon size={21} />
@@ -269,30 +292,32 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
   </>;
 }
 
-function LoginPage({ onBack }: { onBack: () => void }) {
+function LoginPage({ onBack, onContinue, themePreference, onThemeChange }: { onBack: () => void; onContinue: (workspace: AccountType) => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
   const [selected, setSelected] = useState<AccountType>("student");
+  const workspaceLabel = selected === "student" ? "Student" : selected === "company" ? "Company" : "Admin";
   return <main className="login-preview-page">
-    <div className="login-preview-top"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><button className="secondary-btn" type="button" onClick={onBack}>Back to workspace</button></div>
+    <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBack}>Back to workspace</button></div>
     <section className="login-intro login-standalone" aria-label="GradLink login page preview">
       <div className="login-animation" aria-hidden="true">
-        <div className="login-orbit orbit-one" /><div className="login-orbit orbit-two" />
-        <div className="login-network"><i /><i /><i /><i /><i /><i /></div>
-        <div className="login-bars"><i /><i /><i /><i /><i /><i /><i /><i /></div>
-        <div className="login-chart-line" />
-        <div className="login-center-mark"><GraduationCap size={36} /></div>
-        <span className="login-float-label label-student">Students</span><span className="login-float-label label-company">Companies</span><span className="login-float-label label-skills">Skills</span>
+        <img className="login-reference-backdrop" src="/login-orbits.jpg" alt="" />
+        <img className="login-reference-art" src="/login-orbits.jpg" alt="" />
+        <div className="login-reference-glow" />
+        <div className="login-reference-orbit orbit-one" />
+        <div className="login-reference-orbit orbit-two" />
+        <div className="login-reference-particles"><i /><i /><i /><i /><i /><i /></div>
       </div>
       <div className="login-copy">
         <span className="eyebrow">GRADLINK ZW</span>
         <h1>Opportunity, in motion.</h1>
         <p>Connect Zimbabwean students with meaningful work, experience, and future careers.</p>
         <div className="login-mode-label">Choose a workspace to continue</div>
-        <div className="login-mode-buttons">{(["student", "company", "admin"] as AccountType[]).map((type) => <button type="button" key={type} className={selected === type ? "login-mode active" : "login-mode"} onClick={() => setSelected(type)}>
+        <div className="login-mode-buttons" role="group" aria-label="Choose a workspace">{(["student", "company", "admin"] as AccountType[]).map((type) => <button type="button" key={type} className={selected === type ? "login-mode active" : "login-mode"} aria-pressed={selected === type} onClick={() => setSelected(type)}>
           <span>{type === "student" ? <GraduationCap /> : type === "company" ? <Building2 /> : <ShieldCheck />}</span>
           <strong>{type === "student" ? "Student" : type === "company" ? "Company" : "Admin"}</strong>
           <small>{type === "student" ? "Find work and build experience" : type === "company" ? "Post tasks and meet talent" : "Manage platform activity"}</small>
         </button>)}</div>
-        <p className="login-preview-note">Login page design preview Â· Authentication will be connected after the workspace pages are ready.</p>
+        <button className="primary login-continue" type="button" onClick={() => onContinue(selected)}>Continue as {workspaceLabel} <ArrowRight size={17} /></button>
+        <p className="login-preview-note">Workspace preview only. Sign-in and role authorization are not connected yet.</p>
       </div>
     </section>
   </main>;
@@ -433,7 +458,7 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
   const urgent = applications.filter((a) => a.status === "accepted" && deadlineValue(taskById.get(a.taskId)) - Date.now() < 48 * 3600000);
   const clearFilters = () => { setStatusFilter("all"); setQuery(""); setSkillFilter("All skills"); setPaymentFilter("All methods"); };
   return <main className="page student-side-page applications-page">
-    <div className="page-title application-page-heading"><div><span className="eyebrow">STUDENT WORKSPACE</span><h1><CircleCheck size={22} /> My applications</h1><p>Track decisions, next steps, deadlines, and recorded payments.</p></div><button className="primary" type="button" onClick={() => go("tasks")}><BriefcaseBusiness size={16} /> Browse tasks</button></div>
+    <div className="page-title application-page-heading"><div><h1><CircleCheck size={22} /> My applications</h1><p>Track decisions, next steps, deadlines, and recorded payments.</p></div><button className="primary" type="button" onClick={() => go("tasks")}><BriefcaseBusiness size={16} /> Browse tasks</button></div>
     <div className="application-stats">{([["all", "Total applications"], ["pending", "Pending"], ["accepted", "Accepted"], ["completed", "Completed"]] as const).map(([key, label]) => <button type="button" key={key} className={"application-stat " + (statusFilter === key ? "selected" : "")} onClick={() => setStatusFilter(key)}><span>{label}</span><strong>{counts[key]}</strong></button>)}</div>
     <div className="application-earnings"><div><span>Completed task value Â· payment not confirmed</span><strong>{"USD " + totals.unrecorded.USD.toFixed(2) + " Â· EcoCash " + totals.unrecorded.EcoCash.toFixed(2)}</strong></div><div><span>Payment recorded by company</span><strong>{"USD " + totals.recorded.USD.toFixed(2) + " Â· EcoCash " + totals.recorded.EcoCash.toFixed(2)}</strong></div></div>
     {urgent.length > 0 && <div className="application-alerts"><strong><BellRing size={16} /> Action required</strong><span>{urgent.length} accepted task(s) have a deadline within 48 hours. Submit your work from the tracker.</span></div>}
@@ -481,6 +506,26 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
   onSubmitWork: (applicationId: string, work: string) => void;
   onWithdraw: (applicationId: string) => void;
 }) {
+  const [badgeFilter, setBadgeFilter] = useState<"all" | "earned" | "locked">("all");
+  const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
+  const badgeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const badgeCloseRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!selectedBadgeId) return;
+    badgeCloseRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setSelectedBadgeId(null);
+        badgeTriggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [selectedBadgeId]);
+  const closeBadgeDetails = () => {
+    setSelectedBadgeId(null);
+    badgeTriggerRef.current?.focus();
+  };
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const completed = applications.filter((application) => application.status === "completed");
   const invites = applications.filter((application) => application.interviewInvited || application.status === "interview-invited");
@@ -490,20 +535,47 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
     ...applications.filter((application) => application.status === "accepted").map((application) => ({ id: `accepted-${application.id}`, icon: CircleCheck, title: "Your application was accepted", detail: taskById.get(application.taskId)?.title || "View your application", action: () => go("profile") })),
     ...recommendations.slice(0, 1).map((task) => ({ id: `task-${task.id}`, icon: Sparkles, title: "New verified task available", detail: task.title, action: () => go(`detail:${task.id}`) }))
   ];
+  const completedDates = completed.flatMap((application) => application.events?.filter((event) => event.type === "completed").map((event) => event.at) || []).sort((a, b) => Date.parse(a) - Date.parse(b));
+  const inviteDates = invites.flatMap((application) => application.events?.filter((event) => event.type === "interview-invited").map((event) => event.at) || []).sort((a, b) => Date.parse(a) - Date.parse(b));
+  const strongestFieldTaskCount = Math.max(0, ...SKILL_OPTIONS.map((skill) => completed.filter((application) => taskById.get(application.taskId)?.skill === skill).length));
+  const interviewTaskTarget = Math.max(1, policy.studentCompletedTasks);
+  const formatBadgeDate = (date?: string) => date && !Number.isNaN(Date.parse(date)) ? new Date(date).toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" }) : null;
   const badges = [
-    ...(completed.length ? [{ id: "completed", icon: Award, title: "Tasks completed", note: `${completed.length} completed task${completed.length === 1 ? "" : "s"}` }] : []),
-    ...(certificates.length ? [{ id: "verified", icon: BadgeCheck, title: "Verified skills", note: `${certificates.length} certificate${certificates.length === 1 ? "" : "s"} uploaded` }] : []),
-    ...(invites.length ? [{ id: "interview", icon: GraduationCap, title: "Interview ready", note: `${invites.length} invitation${invites.length === 1 ? "" : "s"} received` }] : []),
-    ...(interviewFields.length ? [{ id: "unlocked", icon: UnlockKeyhole, title: "Interview fields unlocked", note: interviewFields.join(", ") }] : [])
+    { id: "completed", icon: Award, title: "Tasks completed", description: "Recognises completed work recorded in your application history.", criteria: "A company marks work as complete after submission.", earned: completed.length > 0, progress: completed.length ? 100 : 0, progressLabel: completed.length ? `${completed.length} completed task${completed.length === 1 ? "" : "s"} recorded` : "Complete an assignment and have the company record it as complete.", note: `${completed.length} completed task${completed.length === 1 ? "" : "s"}`, earnedDate: formatBadgeDate(completedDates[0]), evidence: "Completion is based on company-recorded application activity." },
+    { id: "verified", icon: BadgeCheck, title: "Verified skills", description: "Recognises certificates added to your professional profile.", criteria: "Upload a certificate to your profile.", earned: certificates.length > 0, progress: certificates.length ? 100 : 0, progressLabel: certificates.length ? `${certificates.length} certificate${certificates.length === 1 ? "" : "s"} on your profile` : "Add a certificate in your profile to record this milestone.", note: `${certificates.length} certificate${certificates.length === 1 ? "" : "s"} uploaded`, earnedDate: formatBadgeDate(certificates.map((certificate) => certificate.uploadedAt).filter(Boolean).sort((a, b) => Date.parse(a) - Date.parse(b))[0]), evidence: "Certificate upload is recorded in your profile. The app does not store a separate verification decision." },
+    { id: "interview", icon: GraduationCap, title: "Interview ready", description: "Recognises an interview invitation received through an application.", criteria: "Receive an interview invitation from a company.", earned: invites.length > 0, progress: invites.length ? 100 : 0, progressLabel: invites.length ? `${invites.length} invitation${invites.length === 1 ? "" : "s"} recorded` : "An interview invitation will be recorded here when received.", note: `${invites.length} invitation${invites.length === 1 ? "" : "s"} received`, earnedDate: formatBadgeDate(inviteDates[0]), evidence: "Based on interview invitation flags and activity stored with your applications." },
+    { id: "unlocked", icon: UnlockKeyhole, title: "Interview fields unlocked", description: "Recognises skill fields that meet the current interview pathway thresholds.", criteria: `Enable the Interview track, complete ${policy.studentCompletedTasks} tasks in a field, and meet the company completion threshold of ${policy.companyFilledTasks} tasks.`, earned: interviewFields.length > 0, progress: interviewFields.length ? 100 : profile.track === "interview" ? Math.min(99, Math.round(strongestFieldTaskCount / interviewTaskTarget * 100)) : 0, progressLabel: interviewFields.length ? `${interviewFields.length} field${interviewFields.length === 1 ? "" : "s"} unlocked` : profile.track !== "interview" ? "Enable the Interview track to begin this pathway." : `${Math.min(strongestFieldTaskCount, policy.studentCompletedTasks)} of ${policy.studentCompletedTasks} student tasks in your strongest field; company thresholds also apply.`, note: interviewFields.length ? interviewFields.join(", ") : "No fields unlocked yet", earnedDate: null, evidence: "Unlocked fields are calculated from the existing student and company completion thresholds; the app does not store a separate unlock date." }
   ];
+  const earnedCount = badges.filter((badge) => badge.earned).length;
+  const filteredBadges = badges.filter((badge) => badgeFilter === "all" || (badgeFilter === "earned" ? badge.earned : !badge.earned));
+  const selectedBadge = badges.find((badge) => badge.id === selectedBadgeId) || null;
+  const featuredBadge = badges.find((badge) => !badge.earned) || null;
 
   if (page === "applications") return <StudentApplications applications={applications} tasks={tasks} go={go} onSubmitWork={onSubmitWork} onWithdraw={onWithdraw} />;
-  if (page === "notifications") return <main className="page student-side-page"><div className="page-title"><span className="eyebrow">STUDENT WORKSPACE</span><h1><BellRing size={22} /> Notifications</h1><p>Updates about your applications, interviews, and new tasks.</p></div>
+  if (page === "notifications") return <main className="page student-side-page"><div className="page-title"><h1><BellRing size={22} /> Notifications</h1><p>Updates about your applications, interviews, and new tasks.</p></div>
     {notifications.length ? <div className="notification-list">{notifications.map(({ id, icon: Icon, title, detail, action }) => <button className="notification-row" key={id} type="button" onClick={action}><span className="notification-dot"><Icon size={15} /></span><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></button>)}</div> : <div className="empty"><Bell /><h2>Youâ€™re all caught up</h2><p>New invitations and task matches will appear here.</p></div>}
   </main>;
-  return <main className="page student-side-page"><div className="page-title"><span className="eyebrow">STUDENT WORKSPACE</span><h1><Award size={22} /> Badges</h1><p>Milestones earned through completed work, certificates, and interviews.</p></div>
-    {badges.length ? <div className="earned-badges badge-page-list">{badges.map(({ id, icon: Icon, title, note }) => <div className="earned-badge" key={id}><span><Icon size={20} /></span><div><strong>{title}</strong><small>{note}</small></div></div>)}</div> : <div className="empty"><Award /><h2>Your badges will appear here</h2><p>Complete tasks, upload certificates, and qualify for interviews to earn badges.</p></div>}
-    <section className="section"><h2>Interview progress</h2><p className="form-note">Complete {policy.studentCompletedTasks} tasks in a field to qualify, subject to company interview commitments.</p>{interviewFields.length ? <div className="pills">{interviewFields.map((field) => <span className="pill blue" key={field}>{field}</span>)}</div> : <p>No interview fields unlocked yet. Current goal: {profile.track === "interview" ? `${profile.studyField} (${policy.studentCompletedTasks} completed tasks)` : "enable the Interview track in your profile"}.</p>}</section>
+  return <main className="page student-side-page achievement-centre">
+    <div className="page-title achievement-heading"><div><span className="eyebrow">CAREER RECORD</span><h1><Award size={24} /> My Achievements</h1><p>Badges recognise your skills, completed work and professional milestones.</p></div></div>
+    <section className="achievement-overview" aria-label="Achievement overview">
+      <article className="achievement-summary"><span className="achievement-summary-icon"><BadgeCheck size={18} /></span><div><span>Badges earned</span><strong>{earnedCount} <small>of {badges.length}</small></strong></div></article>
+      <article className="achievement-summary"><span className="achievement-summary-icon"><Target size={18} /></span><div><span>Achievement progress</span><strong>{Math.round(earnedCount / badges.length * 100)}%</strong><div className="achievement-summary-track" role="progressbar" aria-label="Overall achievement progress" aria-valuemin={0} aria-valuemax={100} aria-valuenow={Math.round(earnedCount / badges.length * 100)}><i style={{ width: `${earnedCount / badges.length * 100}%` }} /></div></div></article>
+      <article className="achievement-summary"><span className="achievement-summary-icon"><Sparkles size={18} /></span><div><span>Still available</span><strong>{badges.length - earnedCount}</strong></div></article>
+    </section>
+    {featuredBadge && <section className="achievement-featured" aria-labelledby="featured-achievement-title"><div className="achievement-featured-icon"><featuredBadge.icon size={23} /></div><div className="achievement-featured-copy"><span className="achievement-kicker">NEXT MILESTONE</span><h2 id="featured-achievement-title">{featuredBadge.title}</h2><p>{featuredBadge.description}</p><small>{featuredBadge.criteria}</small><div className="achievement-progress-label"><span>{featuredBadge.progressLabel}</span><strong>{featuredBadge.progress}%</strong></div><div className="achievement-progress-track" role="progressbar" aria-label={`${featuredBadge.title} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={featuredBadge.progress}><i style={{ width: `${featuredBadge.progress}%` }} /></div></div></section>}
+    <section className="achievement-collection" aria-labelledby="achievement-collection-title">
+      <div className="achievement-collection-heading"><div><h2 id="achievement-collection-title">Badge collection</h2><p>{earnedCount} earned · {badges.length - earnedCount} available</p></div><div className="achievement-filters" role="group" aria-label="Filter badges">{([ ["all", "All"], ["earned", "Earned"], ["locked", "Locked"] ] as const).map(([filter, label]) => <button type="button" key={filter} aria-pressed={badgeFilter === filter} className={badgeFilter === filter ? "selected" : ""} onClick={() => setBadgeFilter(filter)}>{label}<span>{filter === "all" ? badges.length : filter === "earned" ? earnedCount : badges.length - earnedCount}</span></button>)}</div></div>
+      {filteredBadges.length ? <div className="achievement-grid">{filteredBadges.map(({ id, icon: Icon, title, description, earned, note }) => <button type="button" className={`achievement-card ${earned ? "is-earned" : "is-locked"}`} key={id} onClick={(event) => { badgeTriggerRef.current = event.currentTarget; setSelectedBadgeId(id); }} aria-label={`${title}, ${earned ? "earned" : "locked"}. View details`}>
+        <span className="achievement-card-icon"><Icon size={22} /></span><span className="achievement-card-status">{earned ? <><CircleCheck size={14} /> Earned</> : "Available"}</span><strong>{title}</strong><p>{description}</p><small>{earned ? note : "View criteria"}</small><span className="achievement-card-link">View details <ChevronRight size={14} /></span>
+      </button>)}</div> : <div className="achievement-empty"><BadgeCheck size={22} /><strong>{badgeFilter === "earned" ? "No achievements earned yet" : "No locked achievements remain"}</strong><p>{badgeFilter === "earned" ? "Complete work, add certificates or receive an interview invitation to record your first milestone." : "You have earned every achievement currently tracked in GradLink."}</p></div>}
+    </section>
+    {selectedBadge && <div className="achievement-detail-backdrop" role="presentation" onClick={closeBadgeDetails}><section className="achievement-detail" role="dialog" aria-modal="true" aria-labelledby="achievement-detail-title" onClick={(event) => event.stopPropagation()}>
+      <div className="achievement-detail-head"><div className={`achievement-card-icon ${selectedBadge.earned ? "is-earned" : "is-locked"}`}><selectedBadge.icon size={23} /></div><button ref={badgeCloseRef} className="icon-btn" type="button" aria-label="Close achievement details" onClick={closeBadgeDetails}><X size={18} /></button></div>
+      <span className="achievement-kicker">{selectedBadge.earned ? "ACHIEVEMENT EARNED" : "ACHIEVEMENT AVAILABLE"}</span><h2 id="achievement-detail-title">{selectedBadge.title}</h2><p>{selectedBadge.description}</p>
+      <div className="achievement-detail-section"><strong>Criteria</strong><p>{selectedBadge.criteria}</p></div>
+      <div className="achievement-detail-section"><strong>Status</strong><p>{selectedBadge.earned ? "Earned" : "Not yet earned"}{selectedBadge.earnedDate ? ` · ${selectedBadge.earnedDate}` : selectedBadge.earned ? " · Date not recorded" : ""}</p></div>
+      <div className="achievement-detail-section"><strong>Record</strong><p>{selectedBadge.evidence}</p></div>
+    </section></div>}
   </main>;
 }
 
@@ -724,7 +796,6 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
       </section>
       {showEditOptions && <div className="profile-edit-options"><button type="button" className="secondary-btn" onClick={() => { setProfileView("personal"); setShowEditOptions(false); }}>Edit personal profile</button><button type="button" className="secondary-btn" onClick={() => { setProfileView("professional"); setShowEditOptions(false); }}>Edit professional profile</button></div>}
       <section className="skill-growth-profile">
-        <span className="eyebrow">STUDENT WORKSPACE</span>
         <h2>Your Skill Growth</h2>
         <p className="skill-growth-intro">Track your progress, showcase your strengths, and discover what to improve next.</p>
         <div className="skill-growth-stats">
@@ -902,7 +973,6 @@ function CompanyDashboard({ tasks, applications, companyName, go }: {
   return (
     <div className="page company-dashboard">
       <div className="page-title">
-        <span className="eyebrow">COMPANY ACCOUNT</span>
         <h1>Company Dashboard - {companyName}</h1>
         <p>Manage your posted tasks, review student applicants and track delivery â€” all in one place.</p>
       </div>
@@ -1010,7 +1080,6 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
   return (
     <div className={embedded ? "company-jobs embedded" : "page company-jobs"}>
       <div className="page-title">
-        <span className="eyebrow">COMPANY LISTINGS</span>
         <h1>{embedded ? "Post new task" : "Post and manage tasks"}</h1>
         <p>Listings are saved in this browser and appear in the student marketplace.</p>
       </div>
@@ -1076,7 +1145,6 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
   return (
     <main className="page">
       <div className="page-title">
-        <span className="eyebrow">APPLICATIONS</span>
         <h1>Review applicants</h1>
         <p>Read each proposal and record your decision.</p>
       </div>
@@ -1222,7 +1290,6 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
   return (
     <div className="page">
       <div className="page-title">
-        <span className="eyebrow">ADMIN ACCOUNT</span>
         <h1>GradLink Admin</h1>
         <p>Hiring infrastructure overview Â· Zimbabwe</p>
       </div>
@@ -1316,6 +1383,7 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
 }
 
 export function App() {
+  const [themePreference, setThemePreference] = useState<ThemePreference>(loadThemePreference);
   const [store, setStore] = useState<Store>(loadStore);
   const [studentProfile, setStudentProfile] = useState<StudentProfileData>(loadStudentProfile);
   const [certificates, setCertificates] = useState<CertificateMeta[]>(loadCertificates);
@@ -1339,6 +1407,38 @@ export function App() {
   const [toastState, setToastState] = useState<{ m: string; e?: boolean } | null>(null);
   const [loginPreviewOpen, setLoginPreviewOpen] = useState(false);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  useEffect(() => {
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const applyTheme = () => {
+      const resolvedTheme = themePreference === "system" ? (media.matches ? "dark" : "light") : themePreference;
+      document.documentElement.dataset.theme = resolvedTheme;
+      document.documentElement.dataset.themePreference = themePreference;
+      document.querySelector('meta[name="theme-color"]')?.setAttribute("content", resolvedTheme === "dark" ? "#0B1930" : "#edf4ff");
+    };
+    const onStorage = (event: StorageEvent) => {
+      if (event.key !== THEME_KEY && event.key !== null) return;
+      const next = event.newValue;
+      if (next === "light" || next === "dark" || next === "system") setThemePreference(next);
+      else setThemePreference("system");
+    };
+    applyTheme();
+    if (themePreference === "system") media.addEventListener("change", applyTheme);
+    window.addEventListener("storage", onStorage);
+    return () => {
+      media.removeEventListener("change", applyTheme);
+      window.removeEventListener("storage", onStorage);
+    };
+  }, [themePreference]);
+
+  const chooseTheme = (preference: ThemePreference) => {
+    setThemePreference(preference);
+    try {
+      localStorage.setItem(THEME_KEY, preference);
+    } catch (error) {
+      console.warn("Could not save appearance preference", error);
+    }
+  };
 
   useEffect(() => {
     try {
@@ -1712,10 +1812,14 @@ export function App() {
       && (companyCompletedByField[skill] || 0) >= store.policy.companyFilledTasks)
     : [];
 
-  if (loginPreviewOpen) return <LoginPage onBack={() => setLoginPreviewOpen(false)} />;
+  if (loginPreviewOpen) return <LoginPage themePreference={themePreference} onThemeChange={chooseTheme} onBack={() => setLoginPreviewOpen(false)} onContinue={(workspace) => {
+    setAccount(workspace);
+    setPage(workspace === "student" ? "dashboard" : workspace === "company" ? "company-dashboard" : "admin-overview");
+    setLoginPreviewOpen(false);
+  }} />;
 
   return (
-    <div className={`app-shell account-${account}`}>
+    <div className={`app-shell account-${account} panel-page-${page}`}>
       <header className="topbar">
         <button className="brand-btn" onClick={() => go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview")}>
           <span className="brand-mark"><GraduationCap size={27} strokeWidth={2.4} /></span>
@@ -1945,7 +2049,7 @@ export function App() {
       {!detailTask && account === "company" && !["company-dashboard", "company-jobs", "company-applicants"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("company-dashboard")}><ArrowLeft /> Back</button></main>}
       {!detailTask && account === "admin" && !["admin-overview", "admin-students", "admin-companies", "admin-moderation"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("admin-overview")}><ArrowLeft /> Back</button></main>}
 
-      {!detailTask && <DashboardNavigation account={account} page={page} go={go} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} />}
+      {!detailTask && <DashboardNavigation account={account} page={page} go={go} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} />}
 
       <AnimatePresence>{modal && <ApplyModal task={modal} onClose={() => setModal(null)} onSubmit={submitApplication} />}</AnimatePresence>
       {certificatePreview && <CertificatePreview certificate={certificatePreview.certificate} url={certificatePreview.url} onClose={closeCertificatePreview} />}
