@@ -22,12 +22,15 @@ import {
   Link2,
   Layers3,
   Menu,
+  MessageCircle,
   Moon,
   Monitor,
   Search,
   ShieldCheck,
+  Shield,
   Sun,
   Star,
+  Trash2,
   Target,
   UnlockKeyhole,
   UserRound,
@@ -214,7 +217,7 @@ function Toast({ message, error = false, onClose }: { message: string; error?: b
       exit={{ opacity: 0, y: -10 }}
       className={`toast ${error ? "toast-error" : ""}`}
     >
-      <span>{error ? "!" : "âœ“"}</span>
+      <span>{error ? "!" : "✓"}</span>
       {message}
       <button aria-label="Close notification" onClick={onClose}><X size={16} /></button>
     </motion.div>
@@ -260,6 +263,7 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
           ["dashboard", "Dashboard", Home],
           ["tasks", "Tasks", BriefcaseBusiness],
           ["applications", "Applications", CircleCheck],
+          ["reviews", "Reviews", Star],
           ["notifications", "Notifications", BellRing],
           ["badges", "Badges", Award],
           ["profile", "Profile", UserRound]
@@ -335,13 +339,6 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
     if (task) value[task.payment] += task.budget;
     return value;
   }, { USD: 0, EcoCash: 0 });
-  const reviewHistory = completed.map((application) => ({ application, task: taskById.get(application.taskId) }))
-    .filter((item): item is { application: Application; task: Task } => Boolean(item.task));
-  const reviewTrend = reviewHistory.sort((a, b) => Date.parse(a.application.createdAt) - Date.parse(b.application.createdAt)).slice(-6);
-  const bestReview = reviewHistory.length ? Math.max(...reviewHistory.map(({ application }) => application.rating || 0)) : 0;
-  const previousReview = reviewHistory.length > 1 ? reviewHistory[reviewHistory.length - 2].application.rating || 0 : 0;
-  const latestReview = reviewHistory.length ? reviewHistory[reviewHistory.length - 1].application.rating || 0 : 0;
-  const reviewImproving = reviewHistory.length > 1 && latestReview >= previousReview;
   const recommendedTasks = tasks.filter((task) => task.verified).map((task) => {
     const priorWork = applications.filter((application) => application.hiredAgain && application.status === "completed" && application.studentId === CURRENT_STUDENT_ID).filter((application) => {
       const completedTask = tasks.find((item) => item.id === application.taskId);
@@ -359,12 +356,11 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
   });
 
   return <main className="page student-dashboard">
-    <motion.section className="dashboard-welcome" {...dashboardMotion(0)}><div><span className="eyebrow">STUDENT DASHBOARD</span><h1>Welcome back, {profile.name.split(" ")[0]}</h1><p>{profile.school} Â· {profile.location} Â· Track: {profile.track === "interview" ? "Interviews" : "Earning"}</p></div><button className="primary welcome-action" onClick={() => go("tasks")}><BriefcaseBusiness size={17} /> Browse tasks</button></motion.section>
+    <motion.section className="dashboard-welcome" {...dashboardMotion(0)}><div><span className="eyebrow">STUDENT DASHBOARD</span><h1>Welcome back, {profile.name.split(" ")[0]}</h1><p>{profile.school} · {profile.location} · Track: {profile.track === "interview" ? "Interviews" : "Earning"}</p></div><button className="primary welcome-action" onClick={() => go("tasks")}><BriefcaseBusiness size={17} /> Browse tasks</button></motion.section>
     <section className="metrics-grid dashboard-metrics">
       <motion.div className="metric-card stat-card" {...dashboardMotion(1)}><span className="stat-icon"><CircleCheck /></span><div><span>Tasks completed</span><strong>{completedTaskCount}</strong><small>Verified completed assignments</small></div></motion.div>
-      <motion.div className="metric-card stat-card" {...dashboardMotion(2)}><span className="stat-icon"><Star /></span><div><span>Student rating</span><strong>{(() => { const rated = applications.filter((application) => application.rating); return rated.length ? `${(rated.reduce((total, application) => total + (application.rating || 0), 0) / rated.length).toFixed(1)} / 5` : "Not rated"; })()}</strong><small>Based on completed work reviews</small></div></motion.div>
-      <motion.div className="metric-card stat-card" {...dashboardMotion(3)}><span className="stat-icon"><UnlockKeyhole /></span><div><span>Interview unlock</span><strong>{profile.track === "interview" ? `${interviewFields.length} fields` : "Not enabled"}</strong><small>{profile.track === "interview" ? `${interviewFields.length} skill fields qualified` : "Switch tracks in your profile"}</small></div></motion.div>
-      <motion.div className="metric-card stat-card" {...dashboardMotion(4)}><span className="stat-icon"><CircleDollarSign /></span><div><span>Completed task value</span><strong>USD ${completedTaskValue.USD.toFixed(2)}</strong><small>EcoCash ${completedTaskValue.EcoCash.toFixed(2)} Â· estimated task value</small></div></motion.div>
+      <motion.div className="metric-card stat-card" {...dashboardMotion(2)}><span className="stat-icon"><UnlockKeyhole /></span><div><span>Interview unlock</span><strong>{profile.track === "interview" ? `${interviewFields.length} fields` : "Not enabled"}</strong><small>{profile.track === "interview" ? `${interviewFields.length} skill fields qualified` : "Switch tracks in your profile"}</small></div></motion.div>
+      <motion.div className="metric-card stat-card" {...dashboardMotion(3)}><span className="stat-icon"><CircleDollarSign /></span><div><span>Completed task value</span><strong>USD ${completedTaskValue.USD.toFixed(2)}</strong><small>EcoCash ${completedTaskValue.EcoCash.toFixed(2)} · estimated task value</small></div></motion.div>
     </section>
     <section className="dashboard-panel favorite-tasks-panel">
       <div className="section-title"><div><h2><Sparkles size={19} /> Best tasks for you</h2><p>Verified openings ranked by your field, company preferences, and task ratings.</p></div><button className="primary view-all-tasks" type="button" onClick={() => go("tasks")}>View all tasks <ChevronRight size={15} /></button></div>
@@ -375,11 +371,50 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
         <button className="primary" type="button" onClick={() => go(`detail:${task.id}`)}>View task <ChevronRight size={15} /></button>
       </article>)}</div> : <div className="empty"><BriefcaseBusiness /><h2>No recommended tasks right now</h2><p>New verified tasks will appear here when available.</p><button className="primary" type="button" onClick={() => go("tasks")}>Browse tasks</button></div>}
     </section>
-    <section className="student-progress-grid" aria-label="Work progress charts">
-      <article className="dashboard-panel review-progress-panel"><div className="section-title"><div><h2><Star size={18} /> Review progress</h2><p>Your company ratings over completed tasks</p></div><span className={`trend-chip ${reviewImproving ? "trend-up" : ""}`}>{reviewHistory.length > 1 ? `${reviewImproving ? "â†‘" : "â†’"} ${latestReview}/5 latest` : `${reviewHistory.length} review${reviewHistory.length === 1 ? "" : "s"}`}</span></div>
-        {reviewTrend.length ? <div className="review-chart" role="img" aria-label="Ratings on recent completed tasks, plotted from zero to five stars">{reviewTrend.map(({ application, task }, index) => { const rating = application.rating || 0; const height = Math.max(8, rating / 5 * 100); return <div className="review-chart-column" key={application.id}><span className="review-chart-value">{rating ? `${rating}â˜…` : "â€”"}</span><div className="review-chart-track"><i className={rating >= 4 ? "high" : ""} style={{ height: `${height}%` }} /></div><small title={task.title}>{index + 1}</small></div>; })}</div> : <div className="chart-empty">Company ratings will appear after completed tasks are reviewed.</div>}
-        <div className="chart-axis"><span>0</span><span>5 stars</span>{bestReview > 0 && <span>Best: {bestReview}/5</span>}</div>
+  </main>;
+}
+
+function StudentReviews({ applications, tasks }: { applications: Application[]; tasks: Task[] }) {
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const completed = applications.filter((application) => application.status === "completed");
+  const reviewHistory = completed.map((application) => ({ application, task: taskById.get(application.taskId) }))
+    .filter((item): item is { application: Application; task: Task } => Boolean(item.task));
+  const ratedReviews = reviewHistory.filter(({ application }) => Boolean(application.rating && application.rating > 0))
+    .sort((a, b) => Date.parse(b.application.createdAt) - Date.parse(a.application.createdAt));
+  const averageReview = ratedReviews.length ? ratedReviews.reduce((total, { application }) => total + (application.rating || 0), 0) / ratedReviews.length : 0;
+  const awaitingReview = reviewHistory.length - ratedReviews.length;
+  const chartReviews = ratedReviews.slice(0, 7).reverse();
+  const trendPoints = chartReviews.map(({ application }, index) => ({
+    x: chartReviews.length < 2 ? 50 : 5 + index * (90 / (chartReviews.length - 1)),
+    y: 72 - ((application.rating || 0) / 5) * 56,
+    rating: application.rating || 0,
+    label: new Date(application.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" })
+  }));
+  const trendPath = trendPoints.map((point, index) => `${index ? "L" : "M"}${point.x},${point.y}`).join(" ");
+  const trendArea = trendPath ? `${trendPath} L${trendPoints[trendPoints.length - 1].x},78 L${trendPoints[0].x},78 Z` : "";
+  const highRatings = ratedReviews.filter(({ application }) => (application.rating || 0) >= 4).length;
+  const middleRatings = ratedReviews.filter(({ application }) => (application.rating || 0) >= 3 && (application.rating || 0) < 4).length;
+  const lowRatings = ratedReviews.length - highRatings - middleRatings;
+  const highPct = ratedReviews.length ? highRatings / ratedReviews.length * 100 : 0;
+  const midPct = ratedReviews.length ? middleRatings / ratedReviews.length * 100 : 0;
+  return <main className="page student-reviews-page">
+    <div className="page-title review-page-heading"><span className="eyebrow">YOUR WORK</span><h1>Review overview</h1><p>Ratings and feedback from your completed work.</p></div>
+    <section className="review-dashboard-grid" aria-label="Review analytics">
+      <article className="dashboard-panel review-chart-panel"><div className="section-title"><div><h2>Reviews received</h2><p>Ratings on completed tasks</p></div><span className="review-period-chip">All time</span></div>
+        <div className="review-chart-metrics"><div><strong>{ratedReviews.length}</strong><span>company reviews</span></div><span className="review-change-chip"><i /> {awaitingReview} awaiting review</span></div>
+        {chartReviews.length ? <div className="review-grouped-chart" role="img" aria-label="Ratings for your latest reviewed tasks"><div className="review-bars">{chartReviews.map(({ application, task }) => <div className="review-bar-group" key={application.id} title={`${task.title}: ${(application.rating || 0).toFixed(1)} out of 5`}><i className="review-bar-muted" style={{ height: `${Math.max(5, ((5 - (application.rating || 0)) / 5) * 100)}%` }} /><i className="review-bar-value" style={{ height: `${Math.max(5, ((application.rating || 0) / 5) * 100)}%` }} /></div>)}</div><div className="review-chart-labels">{chartReviews.map(({ application }, index) => <span key={application.id}>{new Date(application.createdAt).toLocaleDateString(undefined, { month: "short", day: "numeric" }) || `#${index + 1}`}</span>)}</div></div> : <div className="review-empty-chart">Company ratings will appear here after your first completed task is reviewed.</div>}
+        <div className="review-card-footer"><span>Latest {chartReviews.length} reviews</span><span>Rating scale: 5 stars</span></div>
       </article>
+      <article className="dashboard-panel review-trend-panel"><div className="section-title"><div><h2>Rating trend</h2><p>Your latest company ratings</p></div><span className="review-period-chip">Out of 5</span></div>
+        <div className="review-trend-value"><strong>{ratedReviews.length ? averageReview.toFixed(1) : "—"}</strong><span>Average rating</span></div>
+        {trendPoints.length > 1 ? <div className="review-line-chart"><svg viewBox="0 0 100 82" preserveAspectRatio="none" role="img" aria-label="Rating trend over recent reviews"><defs><linearGradient id="reviewTrendFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="var(--theme-primary)" stopOpacity=".32"/><stop offset="100%" stopColor="var(--theme-primary)" stopOpacity="0"/></linearGradient></defs><path d={trendArea} fill="url(#reviewTrendFill)"/><path d={trendPath} fill="none" stroke="var(--theme-primary)" strokeWidth="1.4" vectorEffect="non-scaling-stroke" strokeLinecap="round" strokeLinejoin="round"/>{trendPoints.map((point, index) => <circle key={index} cx={point.x} cy={point.y} r="1.5" fill="var(--theme-primary)" vectorEffect="non-scaling-stroke"><title>{point.label}: {point.rating.toFixed(1)} / 5</title></circle>)}</svg><div className="review-trend-labels">{trendPoints.map((point, index) => <span key={index}>{point.label}</span>)}</div></div> : <div className="review-empty-chart review-empty-line">A rating trend will appear when you have more reviews.</div>}
+        <div className="review-card-footer"><span>{ratedReviews.length} review{ratedReviews.length === 1 ? "" : "s"} total</span><span>All completed work</span></div>
+      </article>
+    </section>
+    <section className="review-bottom-grid" aria-label="Review summary details">
+      <article className="dashboard-panel review-donut-panel"><div className="review-bottom-heading"><div><h2>Rating mix</h2><p>Review distribution</p></div><span>All time</span></div><div className="review-donut-wrap"><div className="review-donut" style={{ background: ratedReviews.length ? `conic-gradient(var(--review-positive) 0 ${highPct}%, var(--theme-cyan) ${highPct}% ${highPct + midPct}%, var(--review-negative) ${highPct + midPct}% 100%)` : "var(--theme-surface-soft)" }}><div><strong>{ratedReviews.length}</strong><small>reviews</small></div></div></div><div className="review-donut-legend"><span><i className="good"/>4 to 5 stars <strong>{highRatings}</strong></span><span><i className="mid"/>3 stars <strong>{middleRatings}</strong></span><span><i className="low"/>1 to 2 stars <strong>{lowRatings}</strong></span></div></article>
+      <article className="dashboard-panel review-profit-panel"><div className="review-bottom-heading"><div><h2>Average score</h2><p>Across rated completed tasks</p></div><Star size={18}/></div><div className="review-bottom-number">{ratedReviews.length ? averageReview.toFixed(1) : "—"}<small> / 5</small></div><div className="review-average-track" role="progressbar" aria-label="Average rating out of five" aria-valuemin={0} aria-valuemax={5} aria-valuenow={Number(averageReview.toFixed(1))}><i style={{ width: `${averageReview / 5 * 100}%` }} /></div><div className="review-legend-pair"><span><i className="good"/>Rated <strong>{ratedReviews.length}</strong></span><span><i className="low"/>Awaiting <strong>{awaitingReview}</strong></span></div></article>
+      <article className="dashboard-panel review-total-panel"><div className="review-bottom-heading"><div><h2>Completed work</h2><p>Tasks in your review history</p></div><span className="review-period-chip">All time</span></div><div className="review-bottom-number">{reviewHistory.length}</div><div className="review-total-track"><i style={{ width: `${reviewHistory.length ? ratedReviews.length / reviewHistory.length * 100 : 0}%` }} /></div><div className="review-total-caption">{ratedReviews.length} rated · {awaitingReview} awaiting company review</div></article>
     </section>
   </main>;
 }
@@ -460,7 +495,7 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
   return <main className="page student-side-page applications-page">
     <div className="page-title application-page-heading"><div><h1><CircleCheck size={22} /> My applications</h1><p>Track decisions, next steps, deadlines, and recorded payments.</p></div><button className="primary" type="button" onClick={() => go("tasks")}><BriefcaseBusiness size={16} /> Browse tasks</button></div>
     <div className="application-stats">{([["all", "Total applications"], ["pending", "Pending"], ["accepted", "Accepted"], ["completed", "Completed"]] as const).map(([key, label]) => <button type="button" key={key} className={"application-stat " + (statusFilter === key ? "selected" : "")} onClick={() => setStatusFilter(key)}><span>{label}</span><strong>{counts[key]}</strong></button>)}</div>
-    <div className="application-earnings"><div><span>Completed task value Â· payment not confirmed</span><strong>{"USD " + totals.unrecorded.USD.toFixed(2) + " Â· EcoCash " + totals.unrecorded.EcoCash.toFixed(2)}</strong></div><div><span>Payment recorded by company</span><strong>{"USD " + totals.recorded.USD.toFixed(2) + " Â· EcoCash " + totals.recorded.EcoCash.toFixed(2)}</strong></div></div>
+    <div className="application-earnings"><div><span>Completed task value · payment not confirmed</span><strong>{"USD " + totals.unrecorded.USD.toFixed(2) + " · EcoCash " + totals.unrecorded.EcoCash.toFixed(2)}</strong></div><div><span>Payment recorded by company</span><strong>{"USD " + totals.recorded.USD.toFixed(2) + " · EcoCash " + totals.recorded.EcoCash.toFixed(2)}</strong></div></div>
     {urgent.length > 0 && <div className="application-alerts"><strong><BellRing size={16} /> Action required</strong><span>{urgent.length} accepted task(s) have a deadline within 48 hours. Submit your work from the tracker.</span></div>}
     <div className="application-toolbar"><label className="application-search"><Search size={17} /><input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Search task or company" /></label><label>Skill<select value={skillFilter} onChange={(e) => setSkillFilter(e.target.value)}><option>All skills</option>{SKILL_OPTIONS.map((skill) => <option key={skill}>{skill}</option>)}</select></label><label>Payment<select value={paymentFilter} onChange={(e) => setPaymentFilter(e.target.value)}><option>All methods</option><option>USD</option><option>EcoCash</option></select></label><label>Sort by<select value={sortBy} onChange={(e) => setSortBy(e.target.value)}><option value="newest">Newest</option><option value="deadline">Deadline</option><option value="payment">Payment amount</option></select></label></div>
     <div className="application-status-tabs" role="tablist" aria-label="Filter applications">{([["all", "All"], ["pending", "Pending"], ["accepted", "Accepted / active"], ["completed", "Completed"], ["closed", "Closed"]] as const).map(([key, label]) => <button key={key} type="button" role="tab" aria-selected={statusFilter === key} className={statusFilter === key ? "selected" : ""} onClick={() => setStatusFilter(key)}>{label}<span>{counts[key]}</span></button>)}</div>
@@ -474,22 +509,22 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
         : a.paymentRecordedAt ? "The company recorded payment for this task."
         : a.status === "rejected" ? "The company declined this application." : "You withdrew this application.";
       return <article className="application-tracker-card" key={a.id}>
-      <div className="application-tracker-top"><div><h2>{task?.title || "Task listing unavailable"}</h2><p>{task?.company || "Company unavailable"} Â· {task?.skill || "Field unavailable"} Â· Applied {new Date(a.createdAt).toLocaleDateString()}</p></div><span className={"status-pill " + (["accepted", "submitted", "completed"].includes(a.status) ? "open" : "review")}>{a.status.replace(/-/g, " ")}</span></div>
+      <div className="application-tracker-top"><div><h2>{task?.title || "Task listing unavailable"}</h2><p>{task?.company || "Company unavailable"} · {task?.skill || "Field unavailable"} · Applied {new Date(a.createdAt).toLocaleDateString()}</p></div><span className={"status-pill " + (["accepted", "submitted", "completed"].includes(a.status) ? "open" : "review")}>{a.status.replace(/-/g, " ")}</span></div>
         <div className="application-tracker-details"><span><small>Task reward</small><strong>{task ? money(task) : "Unavailable"}</strong></span><span><small>Deadline</small><strong>{task?.deadline || "Not available"}</strong></span><span><small>Delivery estimate</small><strong>{a.deliveryDays} day(s)</strong></span></div>
         <div className="application-timeline">{timeline(a).map((step, i) => <div key={step.label + i} className={"application-timeline-step " + (step.complete ? "complete" : "")}><i /><span>{step.label}</span></div>)}</div>
-        <div className="application-next"><strong>Whatâ€™s next?</strong><span>{next}</span></div>{a.companyFeedback && <div className="application-feedback"><strong>Company feedback</strong><p>{a.companyFeedback}</p></div>}
+        <div className="application-next"><strong>What’s next?</strong><span>{next}</span></div>{a.companyFeedback && <div className="application-feedback"><strong>Company feedback</strong><p>{a.companyFeedback}</p></div>}
         <div className="application-card-actions"><button className="secondary-btn" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Track application</button>{a.status === "accepted" && <button className="primary" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Submit work</button>}{a.status === "applied" && <button className="text-btn withdraw-application" type="button" onClick={() => { if (window.confirm("Withdraw this application? It will be closed and cannot be undone.")) onWithdraw(a.id); }}>Withdraw application</button>}</div>
       </article>;
-    })}</div> : applications.length ? <div className="empty"><Search /><h2>No matching applications</h2><p>Try changing your search or filters.</p><button className="secondary-btn" onClick={clearFilters}>Clear filters</button></div> : <div className="empty"><BriefcaseBusiness /><h2>Youâ€™re all caught up</h2><p>You have no applications yet. Explore tasks that match your skills.</p><button className="primary" onClick={() => go("tasks")}>Browse tasks</button></div>}
-    <section className="application-activity"><h2>Recent application activity</h2>{activity.map((event) => <div className="application-activity-row" key={event.id}><span className="activity-dot" /><div><strong>{event.description}</strong><small>{taskById.get(event.application.taskId)?.title || "Task"} Â· {event.actor === "student" ? "You" : "Company"} Â· {new Date(event.at).toLocaleString()}</small></div></div>)}</section>
+    })}</div> : applications.length ? <div className="empty"><Search /><h2>No matching applications</h2><p>Try changing your search or filters.</p><button className="secondary-btn" onClick={clearFilters}>Clear filters</button></div> : <div className="empty"><BriefcaseBusiness /><h2>You’re all caught up</h2><p>You have no applications yet. Explore tasks that match your skills.</p><button className="primary" onClick={() => go("tasks")}>Browse tasks</button></div>}
+    <section className="application-activity"><h2>Recent application activity</h2>{activity.map((event) => <div className="application-activity-row" key={event.id}><span className="activity-dot" /><div><strong>{event.description}</strong><small>{taskById.get(event.application.taskId)?.title || "Task"} · {event.actor === "student" ? "You" : "Company"} · {new Date(event.at).toLocaleString()}</small></div></div>)}</section>
     {selected && <div className="application-drawer-backdrop" role="presentation" onMouseDown={(e) => { if (e.target === e.currentTarget) setSelectedId(null); }}><aside className="application-detail-drawer" role="dialog" aria-modal="true" aria-label="Application details">
       <div className="application-drawer-head"><div><span className="eyebrow">APPLICATION TRACKER</span><h2>{selectedTask?.title || "Application details"}</h2><p>{selectedTask?.company || "Company unavailable"}</p></div><button className="icon-btn" type="button" aria-label="Close details" onClick={() => setSelectedId(null)}><X /></button></div>
-      <div className="application-drawer-scroll"><section><h3>Task reward and deadline</h3><p>{selectedTask ? money(selectedTask) : "Task reward unavailable"} Â· Deadline: {selectedTask?.deadline || "Not available"}</p><p>Task reward is not confirmation of payment.</p></section><section><h3>Task description</h3><p>{selectedTask?.description || "Task details are no longer available."}</p></section><section><h3>Your proposal</h3><p>{selected.proposal}</p>{selected.portfolio && <a href={selected.portfolio} target="_blank" rel="noreferrer">View portfolio</a>}</section>
+      <div className="application-drawer-scroll"><section><h3>Task reward and deadline</h3><p>{selectedTask ? money(selectedTask) : "Task reward unavailable"} · Deadline: {selectedTask?.deadline || "Not available"}</p><p>Task reward is not confirmation of payment.</p></section><section><h3>Task description</h3><p>{selectedTask?.description || "Task details are no longer available."}</p></section><section><h3>Your proposal</h3><p>{selected.proposal}</p>{selected.portfolio && <a href={selected.portfolio} target="_blank" rel="noreferrer">View portfolio</a>}</section>
       <section><h3>Application progress</h3><div className="application-timeline drawer-timeline">{timeline(selected).map((step, i) => <div key={step.label + i} className={"application-timeline-step " + (step.complete ? "complete" : "")}><i /><span>{step.label}</span></div>)}</div><p>{selected.status === "applied" ? "Waiting for company review." : selected.status === "accepted" ? "The company accepted your application. Finish the work and submit it here." : selected.status === "submitted" ? "Your work is submitted and awaiting company review." : "Current status: " + selected.status.replace(/-/g, " ") + "."}</p></section>
       {selected.status === "accepted" && <section><h3>Submit work</h3><label>Work link or delivery notes<textarea value={workDraft} onChange={(e) => setWorkDraft(e.target.value)} placeholder="Add a link or explain how the company can access your work." /></label><button className="primary" type="button" disabled={!workDraft.trim()} onClick={() => { onSubmitWork(selected.id, workDraft.trim()); setSelectedId(null); }}>Submit work to company</button></section>}
       {selected.submittedWork && <section><h3>Submitted work</h3><p>{selected.submittedWork}</p>{selected.submittedAt && <small>Submitted {new Date(selected.submittedAt).toLocaleString()}</small>}</section>}{selected.companyFeedback && <section><h3>Company feedback</h3><p>{selected.companyFeedback}</p></section>}
       <section><h3>Payment status</h3><p>{selected.paymentRecordedAt ? "Company marked payment recorded on " + new Date(selected.paymentRecordedAt).toLocaleDateString() + "." : "GradLink has no payment record. This does not confirm whether an external payment was made."}</p></section>
-      <section><h3>Recorded activity</h3>{(selected.events?.length ? selected.events : [{ id: "legacy-" + selected.id, description: "Application submitted", actor: "student" as const, at: selected.createdAt }]).slice().reverse().map((event) => <div className="application-activity-row" key={event.id}><span className="activity-dot" /><div><strong>{event.description}</strong><small>{event.actor === "student" ? "You" : "Company"} Â· {new Date(event.at).toLocaleString()}</small></div></div>)}</section></div>
+      <section><h3>Recorded activity</h3>{(selected.events?.length ? selected.events : [{ id: "legacy-" + selected.id, description: "Application submitted", actor: "student" as const, at: selected.createdAt }]).slice().reverse().map((event) => <div className="application-activity-row" key={event.id}><span className="activity-dot" /><div><strong>{event.description}</strong><small>{event.actor === "student" ? "You" : "Company"} · {new Date(event.at).toLocaleString()}</small></div></div>)}</section></div>
     </aside></div>}
   </main>;
 }
@@ -553,7 +588,7 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
 
   if (page === "applications") return <StudentApplications applications={applications} tasks={tasks} go={go} onSubmitWork={onSubmitWork} onWithdraw={onWithdraw} />;
   if (page === "notifications") return <main className="page student-side-page"><div className="page-title"><h1><BellRing size={22} /> Notifications</h1><p>Updates about your applications, interviews, and new tasks.</p></div>
-    {notifications.length ? <div className="notification-list">{notifications.map(({ id, icon: Icon, title, detail, action }) => <button className="notification-row" key={id} type="button" onClick={action}><span className="notification-dot"><Icon size={15} /></span><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></button>)}</div> : <div className="empty"><Bell /><h2>Youâ€™re all caught up</h2><p>New invitations and task matches will appear here.</p></div>}
+    {notifications.length ? <div className="notification-list">{notifications.map(({ id, icon: Icon, title, detail, action }) => <button className="notification-row" key={id} type="button" onClick={action}><span className="notification-dot"><Icon size={15} /></span><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></button>)}</div> : <div className="empty"><Bell /><h2>You’re all caught up</h2><p>New invitations and task matches will appear here.</p></div>}
   </main>;
   return <main className="page student-side-page achievement-centre">
     <div className="page-title achievement-heading"><div><span className="eyebrow">CAREER RECORD</span><h1><Award size={24} /> My Achievements</h1><p>Badges recognise your skills, completed work and professional milestones.</p></div></div>
@@ -639,7 +674,7 @@ function Detail({ task, applied, interviewTrack, onBack, onApply }: { task: Task
           <div className="company-logo large">{task.company.charAt(0)}</div>
           <div>
             <strong>{task.company}</strong>
-            <div className="subline">{task.verified && <><ShieldCheck size={14} /> Verified Â· </>}<Star size={13} fill="currentColor" /> {task.rating} Â· company rating</div>
+            <div className="subline">{task.verified && <><ShieldCheck size={14} /> Verified · </>}<Star size={13} fill="currentColor" /> {task.rating} · company rating</div>
           </div>
         </div>
       </div>
@@ -652,7 +687,7 @@ function Detail({ task, applied, interviewTrack, onBack, onApply }: { task: Task
       <section className="budget-box">
         <span>Total budget</span>
         <strong>{money(task)}</strong>
-        <small>Estimated student amount: $${Math.round(task.budget * 0.9)} Â· estimated platform fee: $${Math.round(task.budget * 0.1)}. Prototype only; no payment or escrow is processed.</small>
+        <small>Estimated student amount: $${Math.round(task.budget * 0.9)} · estimated platform fee: $${Math.round(task.budget * 0.1)}. Prototype only; no payment or escrow is processed.</small>
       </section>
 
       <section className="detail-section">
@@ -677,66 +712,32 @@ function Detail({ task, applied, interviewTrack, onBack, onApply }: { task: Task
 
       <div className="sticky-apply">
         <button className="primary full" disabled={applied || (interviewTrack && !["Professional", "Advanced"].includes(task.level))} onClick={onApply}>
-          {applied ? "Application submitted âœ“" : interviewTrack && !["Professional", "Advanced"].includes(task.level) ? "Professional+ for interviews" : "APPLY FOR THIS TASK"}
+          {applied ? "Application submitted ✓" : interviewTrack && !["Professional", "Advanced"].includes(task.level) ? "Professional+ for interviews" : "APPLY FOR THIS TASK"}
         </button>
       </div>
     </div>
   );
 }
 
-function ApplyModal({ task, onClose, onSubmit }: { task: Task; onClose: () => void; onSubmit: (proposal: string, days: number, portfolio: string) => void }) {
-  const [proposal, setProposal] = useState("");
-  const [days, setDays] = useState(1);
-  const [portfolio, setPortfolio] = useState("");
-  const valid = proposal.trim().length >= 20;
-  const validPortfolio = !portfolio.trim() || (() => {
-    try { return ["http:", "https:"].includes(new URL(portfolio.trim()).protocol); }
-    catch { return false; }
-  })();
-
+function SignupPromptModal({ task, onClose, onSignup }: { task: Task; onClose: () => void; onSignup: () => void }) {
   useEffect(() => {
     const closeOnEscape = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", closeOnEscape);
     return () => window.removeEventListener("keydown", closeOnEscape);
   }, [onClose]);
 
-  return (
-    <div className="modal-backdrop" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} className="modal">
-        <div className="modal-head">
-          <div><span className="eyebrow">APPLYING TO</span><h2>{task.title}</h2></div>
-          <button className="icon-btn" onClick={onClose}><X /></button>
-        </div>
-
-        <label>
-          Your proposal <span>(min 20 chars)</span>
-          <textarea value={proposal} onChange={(e) => setProposal(e.target.value)} placeholder="Tell the company how you will complete the task..." />
-        </label>
-
-        <div className="char-count">{proposal.length} characters</div>
-
-        <label>
-          Delivery time
-          <select value={days} onChange={(e) => setDays(Number(e.target.value))}>
-            <option value={1}>1 day</option>
-            <option value={2}>2 days</option>
-            <option value={3}>3 days</option>
-            <option value={5}>5 days</option>
-          </select>
-        </label>
-
-        <label>
-          Portfolio link <span>(optional)</span>
-          <input type="url" value={portfolio} onChange={(e) => setPortfolio(e.target.value)} placeholder="https://..." aria-invalid={!validPortfolio} />
-        </label>
-
-        {!validPortfolio && <p className="field-error" role="alert">Enter a valid http or https portfolio link.</p>}
-        <button className="primary full" disabled={!valid || !validPortfolio} onClick={() => onSubmit(proposal.trim(), days, portfolio.trim())}>
-          SUBMIT APPLICATION
-        </button>
-      </motion.div>
-    </div>
-  );
+  return <div className="modal-backdrop signup-prompt-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <motion.section initial={{ opacity: 0, y: 16, scale: .98 }} animate={{ opacity: 1, y: 0, scale: 1 }} className="modal signup-prompt" role="dialog" aria-modal="true" aria-labelledby="signup-prompt-title">
+      <button type="button" className="icon-btn signup-prompt-close" aria-label="Close sign-up prompt" onClick={onClose}><X size={18} /></button>
+      <span className="signup-prompt-icon"><Zap size={22} /></span>
+      <span className="eyebrow">YOUR NEXT OPPORTUNITY</span>
+      <h2 id="signup-prompt-title">Sign up to start earning</h2>
+      <p>Create your free student account to apply for this task and get paid for your skills.</p>
+      <div className="signup-prompt-task"><div><strong>{task.title}</strong><small>{task.company}</small></div><span>{money(task)}</span></div>
+      <button type="button" className="primary full signup-prompt-cta" onClick={onSignup}>Sign up to start earning <ArrowRight size={17} /></button>
+      <button type="button" className="signup-prompt-later" onClick={onClose}>Maybe later</button>
+    </motion.section>
+  </div>;
 }
 
 function StudentProfile({ toast, profile, applications, tasks, policy, completedByField, interviewFields, certificates, onSave, onUploadCertificate, onRemoveCertificate, onOpenCertificate, go }: {
@@ -790,7 +791,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
         <Avatar initials={initialsFromName(profile.name)} size={80} />
         <div>
           <h1>{profile.name}</h1>
-          <p>{profile.school} â€¢ {profile.location}</p>
+          <p>{profile.school} • {profile.location}</p>
         </div>
         <button className="outline-btn" onClick={() => setShowEditOptions((value) => !value)}>Edit profile</button>
       </section>
@@ -805,13 +806,13 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
         <div className="skill-growth-title"><h3>Your skills</h3><span>{skillProgress.length ? `Top ${skillProgress.length}` : "No completed skills yet"}</span></div>
         {skillProgress.length ? <div className="profile-skill-list">{skillProgress.map(({ skill, count, average, progress, ratedCount }) => <div className="profile-skill-item" key={skill}>
           <div className="profile-skill-heading"><strong>{skill}</strong><b>{progress}%</b></div>
-          <div className="profile-skill-subline">{count} completed task{count === 1 ? "" : "s"}{ratedCount ? ` Â· ${average.toFixed(1)} / 5 average review` : " Â· Awaiting company reviews"}</div>
+          <div className="profile-skill-subline">{count} completed task{count === 1 ? "" : "s"}{ratedCount ? ` · ${average.toFixed(1)} / 5 average review` : " · Awaiting company reviews"}</div>
           <div className="profile-skill-track" role="progressbar" aria-label={`${skill} progress`} aria-valuemin={0} aria-valuemax={100} aria-valuenow={progress}><span style={{ width: `${progress}%` }} /></div>
         </div>)}</div> : <div className="chart-empty">Completed tasks will appear here as your skill history grows.</div>}
         <p className="skill-growth-footnote">Progress blends completed tasks toward your {policy.studentCompletedTasks}-task field goal with company reviews where available.</p>
         <div className="skill-growth-next"><Target size={22} /><div><h3>Recommended next step</h3><p>{skillProgress.length ? `Complete another ${skillProgress[0].skill} task to keep building your experience and review history.` : `Complete a practical ${profile.studyField} task to build your portfolio and demonstrate your skills.`}</p><button type="button" className="text-btn" onClick={() => go("tasks")}>Explore matching tasks <ArrowRight size={15} /></button></div></div>
       </section>
-      <section className="dashboard-panel profile-strength-panel profile-page-strength"><h2><UserRound size={19} /> Profile strength</h2><div className="strength-score"><strong>{profileStrength}%</strong><span>â€” {profileStrength >= 80 ? "Strong profile" : "Keep building"}</span></div><div className="progress strength-progress" role="progressbar" aria-label="Profile strength" aria-valuemin={0} aria-valuemax={100} aria-valuenow={profileStrength}><span style={{ width: `${profileStrength}%` }} /></div><p><Link2 size={15} /> {missingProfileItem}</p></section>
+      <section className="dashboard-panel profile-strength-panel profile-page-strength"><h2><UserRound size={19} /> Profile strength</h2><div className="strength-score"><strong>{profileStrength}%</strong><span>— {profileStrength >= 80 ? "Strong profile" : "Keep building"}</span></div><div className="progress strength-progress" role="progressbar" aria-label="Profile strength" aria-valuemin={0} aria-valuemax={100} aria-valuenow={profileStrength}><span style={{ width: `${profileStrength}%` }} /></div><p><Link2 size={15} /> {missingProfileItem}</p></section>
       </> : <>
       <button type="button" className="back-btn profile-subpage-back" onClick={() => setProfileView("overview")}><ArrowLeft size={18} /> Back to profile</button>
       {profileView === "personal" ? <>
@@ -855,7 +856,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
       <section className="section registration-card">
         <span className="eyebrow">STUDENT REGISTRATION</span>
         <h2>Choose your path</h2>
-        <p>Study field: <strong>{profile.studyField}</strong> Â· {profile.track === "earning" ? "Earning track" : "Interview track"}</p>
+        <p>Study field: <strong>{profile.studyField}</strong> · {profile.track === "earning" ? "Earning track" : "Interview track"}</p>
         {profile.track === "interview" && (
           <p className="form-note">Interview work starts at Professional level. Complete {policy.studentCompletedTasks} tasks in {profile.studyField} to qualify; completed so far: {completedTasks}.</p>
         )}
@@ -868,7 +869,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
         {certificates.length ? <div className="certificate-list">
           {certificates.map((certificate) => (
             <div className="certificate-row" key={certificate.id}>
-              <span><strong>{certificate.name}</strong><small>{(certificate.size / 1024 / 1024).toFixed(2)} MB Â· uploaded {new Date(certificate.uploadedAt).toLocaleDateString()}</small></span>
+              <span><strong>{certificate.name}</strong><small>{(certificate.size / 1024 / 1024).toFixed(2)} MB · uploaded {new Date(certificate.uploadedAt).toLocaleDateString()}</small></span>
               <button type="button" className="text-btn" onClick={() => onOpenCertificate(certificate)}>View</button>
               <button type="button" className="danger-btn" onClick={() => onRemoveCertificate(certificate)}>Remove</button>
             </div>
@@ -924,13 +925,13 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
         <span className="eyebrow">YOUR WORK HISTORY</span>
         <h2>Career summary</h2>
         <p>{summary}</p>
-        <p>{profile.name} Â· {profile.school} Â· {profile.location}</p>
+        <p>{profile.name} · {profile.school} · {profile.location}</p>
         <button className="primary" type="button" onClick={() => {
           const rows = applications.filter((application) => application.status === "completed").map((application) => {
             const task = tasks.find((item) => item.id === application.taskId);
             return `- ${task?.title || "Completed task"} | ${task?.skill || "Field not recorded"} | ${task?.company || "Company"} | ${new Date(application.createdAt).toLocaleDateString()}`;
           });
-          const cvText = `${profile.name}\n${profile.school} Â· ${profile.location}\n\nCAREER SUMMARY\n${summary}\n\nCOMPLETED WORK\n${rows.length ? rows.join("\n") : "No completed task history yet."}\n\nCERTIFICATES\n${certificates.length ? certificates.map((certificate) => `- ${certificate.name}`).join("\n") : "No certificates uploaded."}`;
+          const cvText = `${profile.name}\n${profile.school} · ${profile.location}\n\nCAREER SUMMARY\n${summary}\n\nCOMPLETED WORK\n${rows.length ? rows.join("\n") : "No completed task history yet."}\n\nCERTIFICATES\n${certificates.length ? certificates.map((certificate) => `- ${certificate.name}`).join("\n") : "No certificates uploaded."}`;
           const blob = new Blob([cvText], { type: "text/plain;charset=utf-8" });
           const url = URL.createObjectURL(blob);
           const anchor = document.createElement("a"); anchor.href = url; anchor.download = `${profile.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase() || "student"}-work-history.txt`; anchor.click(); URL.revokeObjectURL(url);
@@ -974,14 +975,14 @@ function CompanyDashboard({ tasks, applications, companyName, go }: {
     <div className="page company-dashboard">
       <div className="page-title">
         <h1>Company Dashboard - {companyName}</h1>
-        <p>Manage your posted tasks, review student applicants and track delivery â€” all in one place.</p>
+        <p>Manage your posted tasks, review student applicants and track delivery — all in one place.</p>
       </div>
 
       <div className="metrics-grid company-metrics">
         <div className="metric-card"><span>Tasks posted</span><strong>{tasks.length}</strong><small>{tasks.filter((task) => task.verified).length} verified listings</small></div>
         <div className="metric-card"><span>Applications received</span><strong>{totalApplicants}</strong><small>Across your task listings</small></div>
         <div className="metric-card"><span>Hires completed</span><strong>{hires}</strong><small>Marked complete</small></div>
-        <div className="metric-card"><span>Average company rating</span><strong>{companyRating === null ? "â€”" : `${companyRating.toFixed(1)} / 5`}</strong><small>{tasks.length ? "Average listing rating" : "Shown when listings are rated"}</small></div>
+        <div className="metric-card"><span>Average company rating</span><strong>{companyRating === null ? "—" : `${companyRating.toFixed(1)} / 5`}</strong><small>{tasks.length ? "Average listing rating" : "Shown when listings are rated"}</small></div>
       </div>
 
       <div className="company-dashboard-layout">
@@ -995,7 +996,7 @@ function CompanyDashboard({ tasks, applications, companyName, go }: {
             </div>
             {tasks.length ? <div className="jobs-panel">
               {tasks.slice(0, 4).map((task) => <div className="job-row" key={task.id}>
-                <div><strong>{task.title}</strong><small>{task.skill} Â· {money(task)} Â· {applications.filter((application) => application.taskId === task.id).length} applications</small></div>
+                <div><strong>{task.title}</strong><small>{task.skill} · {money(task)} · {applications.filter((application) => application.taskId === task.id).length} applications</small></div>
                 <span className={`status-pill ${task.verified ? "open" : "review"}`}>{task.verified ? "Published" : "Pending review"}</span>
               </div>)}
               {tasks.length > 4 && <button className="secondary-btn full-btn" type="button" onClick={() => go("company-jobs")}>View all {tasks.length} tasks</button>}
@@ -1021,13 +1022,13 @@ function CompanyDashboard({ tasks, applications, companyName, go }: {
           <section className="dashboard-panel">
             <h2>Payouts / escrow</h2>
             <div className="escrow-summary"><span>Accepted task budget</span><strong>USD ${acceptedTaskValue.USD.toFixed(2)}<br />EcoCash ${acceptedTaskValue.EcoCash.toFixed(2)}</strong></div>
-            <p className="form-note">Prototype only â€” funds are not held, transferred, or withdrawn in this app.</p>
+            <p className="form-note">Prototype only — funds are not held, transferred, or withdrawn in this app.</p>
             <button className="secondary-btn full-btn" type="button" disabled>Withdraw unavailable</button>
           </section>
           <section className="dashboard-panel">
             <h2>Task completion</h2>
             {completedBySkill.length ? completedBySkill.map(({ task, completed }) => <div className="completion-row" key={task.id}><div><span>{task.title}</span><strong>{completed}</strong></div><div className="progress"><span style={{ width: `${Math.min(100, completed / Math.max(1, task.applicants) * 100)}%` }} /></div></div>) : <p>Completed task activity will appear here once a company marks work complete.</p>}
-            <div className="completion-total"><strong>Completion rate</strong><span>{totalApplicants ? `${Math.round(hires / totalApplicants * 100)}%` : "â€”"}</span></div>
+            <div className="completion-total"><strong>Completion rate</strong><span>{totalApplicants ? `${Math.round(hires / totalApplicants * 100)}%` : "—"}</span></div>
           </section>
         </aside>
       </div>
@@ -1109,7 +1110,7 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
         <h2>Your listings</h2>
         {tasks.length ? tasks.map((task) => (
           <div className="job-row" key={task.id}>
-            <div><strong>{task.title}</strong><small>{task.skill} Â· {money(task)} Â· {applications.filter((application) => application.taskId === task.id).length} applications</small></div>
+            <div><strong>{task.title}</strong><small>{task.skill} · {money(task)} · {applications.filter((application) => application.taskId === task.id).length} applications</small></div>
             <span className={`status-pill ${task.verified ? "open" : "review"}`}>{task.verified ? "Published" : "Pending review"}</span>
           </div>
         )) : <div className="empty"><BriefcaseBusiness /><h2>No listings yet</h2><p>Complete the form above to publish your first task.</p></div>}
@@ -1160,7 +1161,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
           return (
             <div className={`threshold-notice ${invited >= policy.minimumInterviewInvites ? "threshold-met" : ""}`} key={skill}>
               <strong>{skill} interview commitment</strong>
-              <span>{filledTasks} completed tasks Â· {invited}/{policy.minimumInterviewInvites} required interview invitations</span>
+              <span>{filledTasks} completed tasks · {invited}/{policy.minimumInterviewInvites} required interview invitations</span>
             </div>
           );
         })}
@@ -1189,15 +1190,15 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
           return (
             <article className="application-card" key={application.id}>
               <div className="application-heading">
-                <div><strong>{application.studentName || "Student"}</strong><small>{task?.title || "Task listing"} Â· {task?.level} Â· {new Date(application.createdAt).toLocaleDateString()}</small></div>
+                <div><strong>{application.studentName || "Student"}</strong><small>{task?.title || "Task listing"} · {task?.level} · {new Date(application.createdAt).toLocaleDateString()}</small></div>
                 <span className={`status-pill ${status === "accepted" || status === "completed" ? "open" : "review"}`}>{status}</span>
               </div>
               <p>{application.proposal}</p>
-              <div className="application-meta">Delivery: {application.deliveryDays} day{application.deliveryDays === 1 ? "" : "s"} Â· {application.studentTrack === "interview" ? "Interview pathway" : "Earning pathway"} Â· {task ? `${completedCount} completed ${task.skill} tasks` : ""}</div>
+              <div className="application-meta">Delivery: {application.deliveryDays} day{application.deliveryDays === 1 ? "" : "s"} · {application.studentTrack === "interview" ? "Interview pathway" : "Earning pathway"} · {task ? `${completedCount} completed ${task.skill} tasks` : ""}</div>
               <details className="candidate-review"><summary>Review candidate profile and completed work ({candidateHistory.length})</summary>
                 <div className="candidate-history">
                   <p><strong>Completed work:</strong> {candidateHistory.length} verified task{candidateHistory.length === 1 ? "" : "s"} in total</p>
-                  {candidateHistory.length ? candidateHistory.map(({ application: historyItem, task: historyTask }) => <div className="job-row" key={historyItem.id}><div><strong>{historyTask?.title || "Completed task"}</strong><small>{historyTask?.skill || "Field unavailable"} Â· {historyTask?.company || "Company"} Â· {new Date(historyItem.createdAt).toLocaleDateString()}</small></div><span>{historyItem.rating ? `${historyItem.rating}/5 â˜…` : "No rating"}</span></div>) : <p>No completed work recorded yet.</p>}
+                  {candidateHistory.length ? candidateHistory.map(({ application: historyItem, task: historyTask }) => <div className="job-row" key={historyItem.id}><div><strong>{historyTask?.title || "Completed task"}</strong><small>{historyTask?.skill || "Field unavailable"} · {historyTask?.company || "Company"} · {new Date(historyItem.createdAt).toLocaleDateString()}</small></div><span>{historyItem.rating ? `${historyItem.rating}/5 ★` : "No rating"}</span></div>) : <p>No completed work recorded yet.</p>}
                   <label>Rate completed work
                     <select aria-label={`Rate ${application.studentName}`} value={application.rating || ""} onChange={(event) => event.target.value && onRateApplicant(application.id, Number(event.target.value))}>
                       <option value="">Choose rating</option>{[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} / 5</option>)}
@@ -1214,7 +1215,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
                 </>}
                 {status === "accepted" && <p className="form-note">Accepted · waiting for the student to submit their work.</p>}
                 {status === "submitted" && <><div className="submitted-work-preview"><strong>Student submission</strong><p>{application.submittedWork}</p><label>Feedback for student<textarea value={completionFeedback[application.id] || ""} onChange={(event) => setCompletionFeedback((current) => ({ ...current, [application.id]: event.target.value }))} placeholder="Optional feedback about the submitted work" /></label></div><button type="button" className="primary" onClick={() => onSetStatus(application.id, "completed", completionFeedback[application.id] || "")}>Approve work and mark complete</button></>}
-                {status === "completed" && <button type="button" className={`secondary-btn ${application.hiredAgain ? "selected" : ""}`} onClick={() => onHireAgain(application.id)}>{application.hiredAgain ? "Preferred for future tasks âœ“" : "Hire again"}</button>}
+                {status === "completed" && <button type="button" className={`secondary-btn ${application.hiredAgain ? "selected" : ""}`} onClick={() => onHireAgain(application.id)}>{application.hiredAgain ? "Preferred for future tasks ✓" : "Hire again"}</button>}
                 {status === "completed" && <button type="button" className="secondary-btn" disabled={Boolean(application.paymentRecordedAt)} onClick={() => onRecordPayment(application.id)}>{application.paymentRecordedAt ? "Payment recorded" : "Record payment"}</button>}
                 {interviewEligible && <button type="button" className="secondary-btn" disabled={alreadyInvitedStudent} onClick={() => onInviteInterview(application.id)}>
                   {alreadyInvitedStudent ? "Interview invitation sent" : "Invite to interview"}
@@ -1236,32 +1237,75 @@ function ModerationQueue({ tasks, onSetVerified, onDeleteTask }: {
   onSetVerified: (taskId: string, verified: boolean) => void;
   onDeleteTask: (taskId: string) => void;
 }) {
+  const [taskToRemove, setTaskToRemove] = useState<Task | null>(null);
+  const removeTriggerRef = useRef<HTMLButtonElement | null>(null);
+  const cancelRef = useRef<HTMLButtonElement | null>(null);
+  useEffect(() => {
+    if (!taskToRemove) return;
+    cancelRef.current?.focus();
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        setTaskToRemove(null);
+        removeTriggerRef.current?.focus();
+      }
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [taskToRemove]);
+  const cancelRemoval = () => {
+    setTaskToRemove(null);
+    removeTriggerRef.current?.focus();
+  };
+  const confirmRemoval = () => {
+    if (!taskToRemove) return;
+    onDeleteTask(taskToRemove.id);
+    setTaskToRemove(null);
+  };
+
   return (
     <section className="section">
       <div className="section-title"><h2>Task listing moderation</h2></div>
-      <div className="jobs-panel">
+      <div className="jobs-panel moderation-jobs-panel">
         {tasks.map((task) => (
-          <div className="job-row" key={task.id}>
-            <div>
+          <div className="job-row moderation-job-row" key={task.id}>
+            <div className="moderation-task-info">
               <strong>{task.company}</strong>
               <small>{task.title}</small>
+              <span className={`moderation-verification ${task.verified ? "is-verified" : "is-unverified"}`}>
+                {task.verified ? <ShieldCheck size={14} /> : <Shield size={14} />}
+                {task.verified ? "Verified" : "Unverified"}
+              </span>
             </div>
-            <div className="admin-actions">
-              <button className={`status-pill ${task.verified ? "open" : "review"}`} onClick={() => onSetVerified(task.id, !task.verified)}>
-                {task.verified ? "Unverify" : "Verify"}
+            <div className="admin-actions moderation-actions">
+              <button className="moderation-btn moderation-btn-verify" type="button" aria-label={`${task.verified ? "Unverify" : "Verify"} listing: ${task.title}`} onClick={() => onSetVerified(task.id, !task.verified)}>
+                <ShieldCheck size={15} />{task.verified ? "Unverify" : "Verify"}
               </button>
-              <button className="danger-btn" onClick={() => {
-                if (window.confirm(`Remove "${task.title}" and its applications?`)) onDeleteTask(task.id);
-              }}>Remove</button>
+              <button className="moderation-btn moderation-btn-remove" type="button" aria-label={`Remove listing: ${task.title}`} onClick={(event) => {
+                removeTriggerRef.current = event.currentTarget;
+                setTaskToRemove(task);
+              }}>
+                <Trash2 size={15} />Remove
+              </button>
             </div>
           </div>
         ))}
         {!tasks.length && <div className="empty"><ShieldCheck /><h2>No task listings to review</h2></div>}
       </div>
+      {taskToRemove && <div className="modal-backdrop moderation-confirm-backdrop" role="presentation" onClick={cancelRemoval}>
+        <section className="modal moderation-confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="moderation-confirm-title" onClick={(event) => event.stopPropagation()}>
+          <div className="moderation-confirm-icon"><Trash2 size={20} /></div>
+          <h2 id="moderation-confirm-title">Remove this task listing?</h2>
+          <p className="moderation-confirm-listing"><strong>{taskToRemove.title}</strong><span>{taskToRemove.company}</span></p>
+          <p>This permanently removes the listing and all applications attached to it. This action cannot be undone.</p>
+          <div className="moderation-confirm-actions">
+            <button ref={cancelRef} className="moderation-btn moderation-btn-cancel" type="button" onClick={cancelRemoval}>Cancel</button>
+            <button className="moderation-btn moderation-btn-remove-confirm" type="button" onClick={confirmRemoval}><Trash2 size={15} />Remove listing</button>
+          </div>
+        </section>
+      </div>}
     </section>
   );
 }
-
 function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerified, onDeleteTask, go }: {
   tasks: Task[];
   applications: Application[];
@@ -1291,7 +1335,7 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
     <div className="page">
       <div className="page-title">
         <h1>GradLink Admin</h1>
-        <p>Hiring infrastructure overview Â· Zimbabwe</p>
+        <p>Hiring infrastructure overview · Zimbabwe</p>
       </div>
 
       <div className="metrics-grid admin-metrics">
@@ -1318,7 +1362,7 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
         <section className="dashboard-panel admin-recent-tasks">
           <div className="section-title"><div><h2>Recent tasks</h2><p>Latest listings and application status</p></div><button className="text-btn" type="button" onClick={() => go("admin-moderation")}>View all <ChevronRight size={15} /></button></div>
           <div className="admin-task-table">
-            <div className="admin-task-row admin-task-header"><span>Company / task</span><span>Budget</span><span>Status Â· rating</span></div>
+            <div className="admin-task-row admin-task-header"><span>Company / task</span><span>Budget</span><span>Status · rating</span></div>
             {recentTasks.map((task) => {
               const taskApps = taskApplications(task.id);
               const completed = taskApps.filter((application) => application.status === "completed").length;
@@ -1326,7 +1370,7 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
               return <div className="admin-task-row" key={task.id}>
                 <span><strong>{task.company}</strong><small>{task.title}</small></span>
                 <span>{money(task)}</span>
-                <span><i className={`status-pill ${status === "Pending" ? "review" : "open"}`}>{status}</i><small className="admin-rating">{task.rating.toFixed(1)} â˜… Â· {taskApps.length} applicants</small></span>
+                <span><i className={`status-pill ${status === "Pending" ? "review" : "open"}`}>{status}</i><small className="admin-rating">{task.rating.toFixed(1)} ★ · {taskApps.length} applicants</small></span>
               </div>;
             })}
             {!tasks.length && <div className="empty compact-empty"><p>No task listings have been posted yet.</p></div>}
@@ -1342,7 +1386,7 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
           </section>
           <section className="dashboard-panel">
             <div className="section-title"><div><h2>Company approvals</h2><p>{new Set(pendingTasks.map((task) => task.company)).size} pending</p></div><Building2 size={22} /></div>
-            {Array.from(new Set(pendingTasks.map((task) => task.company))).slice(0, 3).map((company) => <p className="approval-row" key={company}><strong>{company}</strong><span>New listing Â· review required</span></p>)}
+            {Array.from(new Set(pendingTasks.map((task) => task.company))).slice(0, 3).map((company) => <p className="approval-row" key={company}><strong>{company}</strong><span>New listing · review required</span></p>)}
             {!pendingTasks.length && <p>No company submissions are waiting for review.</p>}
             <button className="text-btn" type="button" onClick={() => go("admin-companies")}>Open company directory <ChevronRight size={15} /></button>
           </section>
@@ -1497,32 +1541,6 @@ export function App() {
       return;
     }
     setModal(task);
-  };
-
-  const submitApplication = (proposal: string, days: number, portfolio: string) => {
-    if (!modal) return;
-
-    setStore((s) => ({
-      ...s,
-      tasks: s.tasks.map((t) => t.id === modal.id ? { ...t, applicants: t.applicants + 1 } : t),
-      applications: [...s.applications, {
-        id: `a-${Date.now()}`,
-        taskId: modal.id,
-        studentId: CURRENT_STUDENT_ID,
-        studentName: studentProfile.name,
-        studentTrack: studentProfile.track,
-        studentStudyField: studentProfile.studyField,
-        proposal,
-        deliveryDays: days,
-        portfolio,
-        createdAt: new Date().toISOString(),
-        status: "applied",
-        events: [{ id: "event-" + Date.now(), type: "applied", actor: "student", description: "Application submitted", at: new Date().toISOString() }]
-      }]
-    }));
-
-    setModal(null);
-    toast("Application submitted successfully");
   };
 
   const createCompanyTask = (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => {
@@ -1861,6 +1879,7 @@ export function App() {
       {account === "student" && (
         <>
           {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} />}
+          {page === "reviews" && <StudentReviews applications={studentApplications} tasks={store.tasks} />}
           {page === "applications" && <StudentSidePanel page="applications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
           {page === "notifications" && <StudentSidePanel page="notifications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
           {page === "badges" && <StudentSidePanel page="badges" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
@@ -2031,7 +2050,7 @@ export function App() {
               <div className="jobs-panel">
                 {[...new Set(store.tasks.map((task) => task.company))].map((name) => {
                   const companyTasks = store.tasks.filter((task) => task.company === name);
-                  return <div className="job-row" key={name}><div><strong>{name}</strong><small>{companyTasks.length} task listings Â· {companyTasks.filter((task) => task.verified).length} verified</small></div><span className={`status-pill ${companyTasks.every((task) => task.verified) ? "open" : "review"}`}>{companyTasks.every((task) => task.verified) ? "Verified" : "Review"}</span></div>;
+                  return <div className="job-row" key={name}><div><strong>{name}</strong><small>{companyTasks.length} task listings · {companyTasks.filter((task) => task.verified).length} verified</small></div><span className={`status-pill ${companyTasks.every((task) => task.verified) ? "open" : "review"}`}>{companyTasks.every((task) => task.verified) ? "Verified" : "Review"}</span></div>;
                 })}
               </div>
             </main>
@@ -2045,13 +2064,13 @@ export function App() {
         </>
       )}
 
-      {!detailTask && account === "student" && !["dashboard", "tasks", "search", "profile", "applications", "notifications", "badges"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("dashboard")}><ArrowLeft /> Back</button></main>}
+      {!detailTask && account === "student" && !["dashboard", "tasks", "search", "profile", "applications", "reviews", "notifications", "badges"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("dashboard")}><ArrowLeft /> Back</button></main>}
       {!detailTask && account === "company" && !["company-dashboard", "company-jobs", "company-applicants"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("company-dashboard")}><ArrowLeft /> Back</button></main>}
       {!detailTask && account === "admin" && !["admin-overview", "admin-students", "admin-companies", "admin-moderation"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("admin-overview")}><ArrowLeft /> Back</button></main>}
 
       {!detailTask && <DashboardNavigation account={account} page={page} go={go} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} />}
 
-      <AnimatePresence>{modal && <ApplyModal task={modal} onClose={() => setModal(null)} onSubmit={submitApplication} />}</AnimatePresence>
+      <AnimatePresence>{modal && <SignupPromptModal task={modal} onClose={() => setModal(null)} onSignup={() => { setModal(null); setLoginPreviewOpen(true); }} />}</AnimatePresence>
       {certificatePreview && <CertificatePreview certificate={certificatePreview.certificate} url={certificatePreview.url} onClose={closeCertificatePreview} />}
       <AnimatePresence>{toastState && <Toast message={toastState.m} error={toastState.e} onClose={() => setToastState(null)} />}</AnimatePresence>
     </div>
