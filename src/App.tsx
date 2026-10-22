@@ -69,7 +69,7 @@ function loadThemePreference(): ThemePreference {
 const fieldOptions: Array<"All" | Skill> = ["All", ...SKILL_OPTIONS];
 type AccountType = "student" | "company" | "admin";
 type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy };
-type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack; paymentProvider?: "Inbucks" | "Omari" | "EcoCash"; paymentNumber?: string };
+type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack; email?: string; phone?: string; paymentProvider?: "Inbucks" | "Omari" | "EcoCash"; paymentNumber?: string };
 type CertificateMeta = { id: string; name: string; size: number; type: string; uploadedAt: string };
 const workLevels: WorkLevel[] = ["Entry level", "Intermediate"];
 const interviewLevels: WorkLevel[] = ["Professional", "Advanced"];
@@ -296,12 +296,12 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
   </>;
 }
 
-function LoginPage({ onBack, onContinue, themePreference, onThemeChange }: { onBack: () => void; onContinue: (workspace: AccountType) => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
-  const [selected, setSelected] = useState<AccountType>("student");
-  const workspaceLabel = selected === "student" ? "Student" : selected === "company" ? "Company" : "Admin";
+function WelcomePage({ onBack, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onBack: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
+  const [selected, setSelected] = useState<"student" | "company">("student");
+  const workspaceLabel = selected === "student" ? "Student" : "Company";
   return <main className="login-preview-page">
-    <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBack}>Back to workspace</button></div>
-    <section className="login-intro login-standalone" aria-label="GradLink login page preview">
+    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBack}>Back to workspace</button></div>
+    <section className="login-intro login-standalone" aria-label="Welcome to GradLink">
       <div className="login-animation" aria-hidden="true">
         <img className="login-reference-backdrop" src="/login-orbits.jpg" alt="" />
         <img className="login-reference-art" src="/login-orbits.jpg" alt="" />
@@ -311,24 +311,91 @@ function LoginPage({ onBack, onContinue, themePreference, onThemeChange }: { onB
         <div className="login-reference-particles"><i /><i /><i /><i /><i /><i /></div>
       </div>
       <div className="login-copy">
-        <span className="eyebrow">GRADLINK ZW</span>
-        <h1>Opportunity, in motion.</h1>
+        <span className="eyebrow">WELCOME TO GRADLINK ZW</span>
+        <h1>Opportunity starts here.</h1>
         <p>Connect Zimbabwean students with meaningful work, experience, and future careers.</p>
-        <div className="login-mode-label">Choose a workspace to continue</div>
-        <div className="login-mode-buttons" role="group" aria-label="Choose a workspace">{(["student", "company", "admin"] as AccountType[]).map((type) => <button type="button" key={type} className={selected === type ? "login-mode active" : "login-mode"} aria-pressed={selected === type} onClick={() => setSelected(type)}>
-          <span>{type === "student" ? <GraduationCap /> : type === "company" ? <Building2 /> : <ShieldCheck />}</span>
-          <strong>{type === "student" ? "Student" : type === "company" ? "Company" : "Admin"}</strong>
-          <small>{type === "student" ? "Find work and build experience" : type === "company" ? "Post tasks and meet talent" : "Manage platform activity"}</small>
+        <div className="login-mode-label">Choose how you want to use GradLink</div>
+        <div className="login-mode-buttons" role="group" aria-label="Choose a workspace">{(["student", "company"] as const).map((type) => <button type="button" key={type} className={selected === type ? "login-mode active" : "login-mode"} aria-pressed={selected === type} onClick={() => setSelected(type)}>
+          <span>{type === "student" ? <GraduationCap /> : <Building2 />}</span>
+          <strong>{type === "student" ? "Student" : "Company"}</strong>
+          <small>{type === "student" ? "Find paid tasks and build experience" : "Post tasks and meet talent"}</small>
         </button>)}</div>
         <button className="primary login-continue" type="button" onClick={() => onContinue(selected)}>Continue as {workspaceLabel} <ArrowRight size={17} /></button>
-        <p className="login-preview-note">Workspace preview only. Sign-in and role authorization are not connected yet.</p>
+        <p className="login-preview-note">Create an account or sign in to access your workspace.</p>
       </div>
     </section>
   </main>;
 }
 
-function StudentDashboard({ profile, applications, tasks, certificates, policy, interviewFields, go }: {
-  profile: StudentProfileData; applications: Application[]; tasks: Task[]; certificates: CertificateMeta[]; policy: InterviewPolicy; interviewFields: Skill[]; go: (page: string) => void;
+function AccountAccessPage({ workspace, onBack, onComplete }: { workspace: "student" | "company"; onBack: () => void; onComplete: (workspace: "student" | "company", mode: "create" | "signin", name: string) => void }) {
+  const [mode, setMode] = useState<"create" | "signin">("create");
+  const [name, setName] = useState("");
+  const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [passwordError, setPasswordError] = useState("");
+  const isStudent = workspace === "student";
+  const role = isStudent ? "student" : "company";
+  return <main className="login-preview-page account-access-page">
+    <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span></div><button className="secondary-btn" type="button" onClick={onBack}>Back</button></div>
+    <section className="access-card" aria-labelledby="access-title">
+      <span className="eyebrow">{isStudent ? "STUDENT ACCESS" : "COMPANY ACCESS"}</span>
+      <h1 id="access-title">{mode === "create" ? "Create your account" : "Sign in to your account"}</h1>
+      <p>{mode === "create" ? isStudent ? "Create an account to access GradLink. Choose an earning package after setup to start applying for paid work." : "Create an account to access your company workspace and post tasks." : "Enter your account details to continue to your workspace."}</p>
+      <form onSubmit={(event) => { event.preventDefault(); if (mode === "create" && password !== confirmPassword) { setPasswordError("Passwords do not match."); return; } setPasswordError(""); onComplete(workspace, mode, name.trim()); }}>
+        {mode === "create" && <label>{isStudent ? "Full name" : "Company name"}<input required autoComplete={isStudent ? "name" : "organization"} value={name} onChange={(event) => setName(event.target.value)} placeholder={isStudent ? "Your full name" : "Your company name"} /></label>}
+        <label>{isStudent ? "Email address" : "Work email"}<input required type="email" autoComplete="email" placeholder="you@example.com" /></label>
+        <label>Password<input required type="password" minLength={8} autoComplete={mode === "create" ? "new-password" : "current-password"} placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        {mode === "create" && <label>Confirm password<input required type="password" minLength={8} autoComplete="new-password" placeholder="Enter your password again" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>}
+        {passwordError && <small className="form-error">{passwordError}</small>}
+        <button className="primary full access-submit" type="submit">{mode === "create" ? "Create account" : "Sign in"} <ArrowRight size={16} /></button>
+      </form>
+      <p className="access-switch">{mode === "create" ? "Already have an account?" : "New to GradLink?"} <button type="button" onClick={() => setMode(mode === "create" ? "signin" : "create")}>{mode === "create" ? "Sign in" : "Create account"}</button></p>
+      <small className="access-prototype-note">Account access is a prototype flow; authentication is not connected yet.</small>
+    </section>
+  </main>;
+}
+
+function AdminLoginPage({ onBack, onSubmit }: { onBack: () => void; onSubmit: () => void }) {
+  return <main className="login-preview-page admin-login-page"><div className="login-preview-top"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><button className="secondary-btn" type="button" onClick={onBack}>Back</button></div>
+    <section className="access-card" aria-labelledby="admin-login-title"><span className="eyebrow">RESTRICTED ACCESS</span><h1 id="admin-login-title">Admin sign in</h1><p>Sign in with an authorized platform administrator account.</p><form onSubmit={(event) => { event.preventDefault(); onSubmit(); }}><label>Admin email<input required type="email" autoComplete="username" placeholder="admin@gradlink.co.zw" /></label><label>Password<input required type="password" autoComplete="current-password" placeholder="Your password" /></label><button className="primary full access-submit" type="submit">Sign in <ArrowRight size={16} /></button></form><small className="access-prototype-note">Admin authentication is not connected yet.</small></section>
+  </main>;
+}
+
+const STUDENT_PACKAGES = [
+  { id: "general", name: "General", cap: "Tasks up to $20", fee: "10% per earning", detail: "A $2 service fee on a $20 earning.", benefits: ["Access to General tasks", "Platform keeps 10% of each earning"] },
+  { id: "intermediate", name: "Intermediate", cap: "Tasks up to $35", fee: "$5 per earning", detail: "Service fee starts at $5 per earning.", benefits: ["Access to Intermediate tasks", "Platform fee from $5 per earning"] },
+  { id: "professional", name: "Professional", cap: "Tasks up to $50", fee: "$10 per earning", detail: "Includes access to interview opportunities.", benefits: ["Access to Professional tasks", "Unlock interviews", "$10 platform fee per earning"] },
+  { id: "advanced", name: "Advanced", cap: "Tasks $80+", fee: "$30 per earning", detail: "Includes first preference and access to top paying tasks.", benefits: ["Access to Advanced tasks", "First preference", "Top paying tasks", "$30 platform fee per earning"] },
+] as const;
+const packageRank: Record<typeof STUDENT_PACKAGES[number]["id"], number> = { general: 1, intermediate: 2, professional: 3, advanced: 4 };
+const taskLevelRank: Record<WorkLevel, number> = { "Entry level": 1, Intermediate: 2, Professional: 3, Advanced: 4 };
+
+function StudentPackagePage({ onBack, onContinue }: { onBack: () => void; onContinue: (packageId: typeof STUDENT_PACKAGES[number]["id"]) => void }) {
+  const [selected, setSelected] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(null);
+  return <main className="login-preview-page package-access-page"><div className="login-preview-top"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><button className="secondary-btn" type="button" onClick={onBack}>Back</button></div>
+    <section className="package-selection" aria-labelledby="package-title"><span className="eyebrow">STUDENT EARNING SETUP</span><h1 id="package-title">Choose an earning package</h1><p>Your account gives you access to GradLink. Choose a package to unlock eligible paid tasks and earning features.</p><div className="package-grid">{STUDENT_PACKAGES.map((item) => <button type="button" key={item.id} className={`package-option ${selected === item.id ? "selected" : ""}`} aria-pressed={selected === item.id} onClick={() => setSelected(item.id)}><span className="package-option-top"><strong>{item.name}</strong><span>{item.cap}</span></span><strong className="package-fee">{item.fee}</strong><span className="package-detail">{item.detail}</span><ul>{item.benefits.map((benefit) => <li key={benefit}>{benefit}</li>)}</ul></button>)}</div><button className="primary full access-submit" type="button" disabled={!selected} onClick={() => selected && onContinue(selected)}>Activate package &amp; continue <ArrowRight size={16} /></button><small className="access-prototype-note">Package activation is a prototype selection; payments and deductions are not connected.</small></section>
+  </main>;
+}
+
+function StudentPackageDetailsPage({ packageId, profile, onBack, onSubmit }: { packageId: typeof STUDENT_PACKAGES[number]["id"]; profile: StudentProfileData; onBack: () => void; onSubmit: (profile: StudentProfileData) => void }) {
+  const packageInfo = STUDENT_PACKAGES.find((item) => item.id === packageId)!;
+  const needsFormalDetails = packageId === "professional" || packageId === "advanced";
+  const [name, setName] = useState(profile.name === defaultStudentProfile.name ? "" : profile.name);
+  const [school, setSchool] = useState(profile.school === defaultStudentProfile.school ? "" : profile.school);
+  const [location, setLocation] = useState(profile.location === defaultStudentProfile.location ? "" : profile.location);
+  const [email, setEmail] = useState(profile.email || "");
+  const [phone, setPhone] = useState(profile.phone || "");
+  const [paymentProvider, setPaymentProvider] = useState<StudentProfileData["paymentProvider"]>(profile.paymentProvider);
+  const [paymentNumber, setPaymentNumber] = useState(profile.paymentNumber || "");
+  return <main className="login-preview-page package-access-page"><div className="login-preview-top"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><button className="secondary-btn" type="button" onClick={onBack}>Back to packages</button></div>
+    <section className="access-card package-details-card" aria-labelledby="package-details-title"><span className="eyebrow">{packageInfo.name.toUpperCase()} PACKAGE SETUP</span><h1 id="package-details-title">{needsFormalDetails ? "Complete your student details" : "Add your payment details"}</h1><p>{needsFormalDetails ? `Add the formal and payment details for your ${packageInfo.name} account.` : `General and Intermediate accounts only need payment details to receive earnings.`}</p><form onSubmit={(event) => { event.preventDefault(); onSubmit({ ...profile, ...(needsFormalDetails ? { name: name.trim(), school: school.trim(), location: location.trim(), email: email.trim(), phone: phone.trim() } : {}), paymentProvider, paymentNumber: paymentNumber.trim() }); }}>
+      {needsFormalDetails && <><label>Full legal name<input required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label><label>School and course<input required value={school} onChange={(event) => setSchool(event.target.value)} /></label><label>Location<input required value={location} onChange={(event) => setLocation(event.target.value)} /></label></>}
+      <label>Payment method<select required value={paymentProvider || ""} onChange={(event) => setPaymentProvider((event.target.value || undefined) as StudentProfileData["paymentProvider"])}><option value="">Choose a method</option>{paymentOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}</select></label><label>Payment account or phone number<input required value={paymentNumber} onChange={(event) => setPaymentNumber(event.target.value)} placeholder="Where you receive your earnings" /></label><div className="payment-provider-options" aria-label="Payment method icons">{paymentOptions.map((option) => <button type="button" className={paymentProvider === option.name ? "payment-provider selected" : "payment-provider"} key={option.name} onClick={() => setPaymentProvider(option.name)} aria-label={`Select ${option.name}`}><img src={option.logo} alt="" loading="lazy" /><span>{option.name}</span></button>)}</div><button className="primary full access-submit" type="submit">Save details and activate {packageInfo.name} <ArrowRight size={16} /></button></form><small className="access-prototype-note">Details are stored in this browser prototype. Payments are not connected.</small></section>
+  </main>;
+}
+
+function StudentDashboard({ profile, applications, tasks, certificates, policy, interviewFields, packageTier, go }: {
+  profile: StudentProfileData; applications: Application[]; tasks: Task[]; certificates: CertificateMeta[]; policy: InterviewPolicy; interviewFields: Skill[]; packageTier: typeof STUDENT_PACKAGES[number]["id"] | null; go: (page: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
   const taskById = new Map(tasks.map((task) => [task.id, task]));
@@ -339,7 +406,7 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
     if (task) value[task.payment] += task.budget;
     return value;
   }, { USD: 0, EcoCash: 0 });
-  const recommendedTasks = tasks.filter((task) => task.verified).map((task) => {
+  const recommendedTasks = tasks.filter((task) => task.verified && packageTier && taskLevelRank[task.level || "Intermediate"] <= packageRank[packageTier] && task.budget <= ({ general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY }[packageTier])).map((task) => {
     const priorWork = applications.filter((application) => application.hiredAgain && application.status === "completed" && application.studentId === CURRENT_STUDENT_ID).filter((application) => {
       const completedTask = tasks.find((item) => item.id === application.taskId);
       return completedTask?.company === task.company && completedTask.skill === task.skill;
@@ -348,7 +415,7 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
     const applied = applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID);
     const relevant = task.skill === profile.studyField ? 1 : 0;
     return { task, preference, applied, relevant };
-  }).filter(({ applied }) => !applied).sort((a, b) => b.preference - a.preference || b.relevant - a.relevant || b.task.match - a.task.match || b.task.rating - a.task.rating).slice(0, 2);
+  }).filter(({ applied }) => !applied).sort((a, b) => packageTier === "advanced" ? b.task.budget - a.task.budget || b.preference - a.preference : b.preference - a.preference || b.relevant - a.relevant || b.task.match - a.task.match || b.task.rating - a.task.rating).slice(0, 2);
   const dashboardMotion = (index: number) => ({
     initial: reduceMotion ? false : { opacity: 0, y: 12 },
     animate: { opacity: 1, y: 0 },
@@ -740,7 +807,7 @@ function SignupPromptModal({ task, onClose, onSignup }: { task: Task; onClose: (
   </div>;
 }
 
-function StudentProfile({ toast, profile, applications, tasks, policy, completedByField, interviewFields, certificates, onSave, onUploadCertificate, onRemoveCertificate, onOpenCertificate, go }: {
+function StudentProfile({ toast, profile, applications, tasks, policy, completedByField, interviewFields, certificates, canInterview, onSave, onUploadCertificate, onRemoveCertificate, onOpenCertificate, go }: {
   toast: (m: string) => void;
   profile: StudentProfileData;
   applications: Application[];
@@ -749,6 +816,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
   completedByField: Partial<Record<Skill, number>>;
   interviewFields: Skill[];
   certificates: CertificateMeta[];
+  canInterview: boolean;
   onSave: (profile: StudentProfileData) => void;
   onUploadCertificate: (files: FileList | null) => void;
   onRemoveCertificate: (certificate: CertificateMeta) => void;
@@ -845,9 +913,13 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
             </select>
           </label>
           <label>Account goal
-            <select value={track} onChange={(event) => setTrack(event.target.value as StudentTrack)}>
+            <select value={track} onChange={(event) => {
+              const nextTrack = event.target.value as StudentTrack;
+              if (nextTrack === "interview" && !canInterview) { toast("Professional or Advanced package is required to unlock interviews"); return; }
+              setTrack(nextTrack);
+            }}>
               <option value="earning">Earn through tasks</option>
-              <option value="interview">Earn and pursue interviews</option>
+              <option value="interview" disabled={!canInterview}>Earn and pursue interviews{canInterview ? "" : " (Professional package required)"}</option>
             </select>
           </label>
           <button className="primary" type="submit">Save professional profile</button>
@@ -1449,7 +1521,17 @@ export function App() {
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<Task | null>(null);
   const [toastState, setToastState] = useState<{ m: string; e?: boolean } | null>(null);
-  const [loginPreviewOpen, setLoginPreviewOpen] = useState(false);
+  const [welcomePageOpen, setWelcomePageOpen] = useState(false);
+  const [accessWorkspace, setAccessWorkspace] = useState<"student" | "company" | null>(null);
+  const [packageSelectionOpen, setPackageSelectionOpen] = useState(false);
+  const [packageSetupTier, setPackageSetupTier] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(null);
+  const [adminLoginOpen, setAdminLoginOpen] = useState(false);
+  const [studentPackage, setStudentPackage] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(() => {
+    try { return (STUDENT_PACKAGES.some((item) => item.id === localStorage.getItem(`${KEY}-student-package`)) ? localStorage.getItem(`${KEY}-student-package`) : null) as typeof STUDENT_PACKAGES[number]["id"] | null; }
+    catch { return null; }
+  });
+  const adminLogoClicks = useRef(0);
+  const adminLogoResetTimer = useRef<number | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
 
   useEffect(() => {
@@ -1483,6 +1565,21 @@ export function App() {
       console.warn("Could not save appearance preference", error);
     }
   };
+
+  const handleAdminLogoTap = () => {
+    adminLogoClicks.current += 1;
+    if (adminLogoResetTimer.current !== null) window.clearTimeout(adminLogoResetTimer.current);
+    if (adminLogoClicks.current >= 5) {
+      adminLogoClicks.current = 0;
+      setAdminLoginOpen(true);
+      return;
+    }
+    adminLogoResetTimer.current = window.setTimeout(() => { adminLogoClicks.current = 0; }, 2500);
+  };
+
+  useEffect(() => () => {
+    if (adminLogoResetTimer.current !== null) window.clearTimeout(adminLogoResetTimer.current);
+  }, []);
 
   useEffect(() => {
     try {
@@ -1532,12 +1629,31 @@ export function App() {
   const addTask = (task: Task) => setStore((s) => ({ ...s, tasks: [task, ...s.tasks] }));
 
   const apply = (task: Task) => {
+    if (!studentPackage) {
+      setPackageSelectionOpen(true);
+      return;
+    }
+    const maxBudgetByPackage = { general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY };
+    if (task.budget > maxBudgetByPackage[studentPackage]) {
+      toast(`${STUDENT_PACKAGES.find((item) => item.id === studentPackage)?.name} package covers tasks up to $${maxBudgetByPackage[studentPackage]}. Choose a higher package for this task.`, true);
+      setPackageSelectionOpen(true);
+      return;
+    }
+    if (studentProfile.track === "interview" && !["professional", "advanced"].includes(studentPackage)) {
+      toast("Professional or Advanced package is required to pursue interviews", true);
+      setPackageSelectionOpen(true);
+      return;
+    }
     if (studentProfile.track === "interview" && task.level !== "Professional" && task.level !== "Advanced") {
       toast("Interview-pathway applications require Professional or Advanced work", true);
       return;
     }
     if (store.applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID)) {
       toast("This student has already submitted an application for this task");
+      return;
+    }
+    if (!studentPackageSelected) {
+      setPackageSelectionOpen(true);
       return;
     }
     setModal(task);
@@ -1764,10 +1880,14 @@ export function App() {
     });
   };
 
+  const availableLevels = levels.filter((level) => studentPackage && taskLevelRank[level] <= packageRank[studentPackage]);
   const visibleTasks = useMemo(
     () =>
       store.tasks.filter((task) => {
-        if (!task.verified) return false;
+        if (!studentPackage || !task.verified) return false;
+        if (taskLevelRank[task.level || "Intermediate"] > packageRank[studentPackage]) return false;
+        const taskBudgetLimit = { general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY }[studentPackage];
+        if (task.budget > taskBudgetLimit) return false;
         const matchesField = filter === "All" || task.skill === filter;
         const matchesLevel = levelFilter === "All levels" || (task.level || "Intermediate") === levelFilter;
         const matchesQuery = `${task.title} ${task.company} ${task.description} ${task.skill}`
@@ -1788,7 +1908,7 @@ export function App() {
         return preferenceScore(b) - preferenceScore(a)
           || Number(b.skill === studentProfile.studyField) - Number(a.skill === studentProfile.studyField);
       }),
-    [store.tasks, store.applications, filter, levelFilter, query, studentProfile.studyField]
+    [store.tasks, store.applications, filter, levelFilter, query, studentProfile.studyField, studentPackage]
   );
 
   const detailId = page.startsWith("detail:") ? page.slice(7) : null;
@@ -1830,25 +1950,60 @@ export function App() {
       && (companyCompletedByField[skill] || 0) >= store.policy.companyFilledTasks)
     : [];
 
-  if (loginPreviewOpen) return <LoginPage themePreference={themePreference} onThemeChange={chooseTheme} onBack={() => setLoginPreviewOpen(false)} onContinue={(workspace) => {
-    setAccount(workspace);
-    setPage(workspace === "student" ? "dashboard" : workspace === "company" ? "company-dashboard" : "admin-overview");
-    setLoginPreviewOpen(false);
+  if (adminLoginOpen) return <AdminLoginPage onBack={() => setAdminLoginOpen(false)} onSubmit={() => toast("Admin authentication is not connected yet.", true)} />;
+  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onBack={() => setWelcomePageOpen(false)} onContinue={(workspace) => {
+    setAccessWorkspace(workspace);
+    setWelcomePageOpen(false);
+  }} />;
+  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onBack={() => { setAccessWorkspace(null); setWelcomePageOpen(true); }} onComplete={(workspace, mode, name) => {
+    setAccessWorkspace(null);
+    if (workspace === "student") {
+      if (mode === "signin" && studentPackage) {
+        setAccount("student");
+        setPage("dashboard");
+        return;
+      }
+      setPackageSelectionOpen(true);
+      return;
+    }
+    if (mode === "create" && name) setCompanyName(name);
+    setAccount("company");
+    setPage("company-dashboard");
+  }} />;
+  if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={(profile) => {
+    setStudentProfile(profile);
+    setStudentPackage(packageSetupTier);
+    setLevelFilter((current) => current === "All levels" || taskLevelRank[current] <= packageRank[packageSetupTier] ? current : "All levels");
+    try { localStorage.setItem(`${KEY}-student-package`, packageSetupTier); } catch { /* package remains active for this session */ }
+    setPackageSetupTier(null);
+    setAccount("student");
+    setPage("dashboard");
+  }} />;
+  if (packageSelectionOpen) return <StudentPackagePage onBack={() => {
+    setPackageSelectionOpen(false);
+    setAccount("student");
+    setPage("dashboard");
+  }} onContinue={(packageId) => {
+    setPackageSelectionOpen(false);
+    setPackageSetupTier(packageId);
   }} />;
 
   return (
     <div className={`app-shell account-${account} panel-page-${page}`}>
       <header className="topbar">
-        <button className="brand-btn" onClick={() => go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview")}>
+        <button className="brand-btn" onClick={(event) => {
+          if ((event.target as HTMLElement).closest(".brand-mark")) { handleAdminLogoTap(); return; }
+          go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview");
+        }}>
           <span className="brand-mark"><GraduationCap size={27} strokeWidth={2.4} /></span>
           <span className="brand-name">GradLink ZW</span>
         </button>
 
         <div className="top-actions">
           <span className="account-label">{account === "student" ? "Student account" : account === "company" ? "Company account" : "Admin account"}</span>
-          <button className="login-preview-link" type="button" onClick={() => setLoginPreviewOpen(true)}>Login page preview</button>
+          <button className="login-preview-link" type="button" onClick={() => setWelcomePageOpen(true)}>Welcome page</button>
           <div className="account-switcher" aria-label="Account type selector">
-            {(["student", "company", "admin"] as AccountType[]).map((type) => (
+            {(["student", "company"] as AccountType[]).map((type) => (
               <button
                 key={type}
                 type="button"
@@ -1857,10 +2012,9 @@ export function App() {
                   setAccount(type);
                   if (type === "student") setPage("dashboard");
                   if (type === "company") setPage("company-dashboard");
-                  if (type === "admin") setPage("admin-overview");
                 }}
               >
-                {type === "student" ? "Student" : type === "company" ? "Company" : "Admin"}
+                {type === "student" ? "Student" : "Company"}
               </button>
             ))}
           </div>
@@ -1878,7 +2032,7 @@ export function App() {
 
       {account === "student" && (
         <>
-          {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} />}
+          {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} packageTier={studentPackage} go={go} />}
           {page === "reviews" && <StudentReviews applications={studentApplications} tasks={store.tasks} />}
           {page === "applications" && <StudentSidePanel page="applications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
           {page === "notifications" && <StudentSidePanel page="notifications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
@@ -1902,7 +2056,7 @@ export function App() {
                 <label>Work level
                   <select value={levelFilter} onChange={(event) => setLevelFilter(event.target.value as "All levels" | WorkLevel)}>
                     <option>All levels</option>
-                    {levels.map((level) => <option key={level}>{level}</option>)}
+                    {availableLevels.map((level) => <option key={level}>{level}</option>)}
                   </select>
                 </label>
               </div>
@@ -1930,9 +2084,9 @@ export function App() {
               ) : (
                 <div className="empty">
                   <Search size={28} />
-                  <h2>No tasks in {filter}</h2>
-                  <p>Try a different field or clear your search to see more opportunities.</p>
-                  <button className="primary" onClick={() => { setFilter("All"); setQuery(""); }}>Show all tasks</button>
+                  <h2>{studentPackage ? `No tasks in ${filter}` : "Choose an earning package"}</h2>
+                  <p>{studentPackage ? "Try a different field or clear your search to see more opportunities." : "Select a package to see tasks available at your tier."}</p>
+                  {studentPackage ? <button className="primary" onClick={() => { setFilter("All"); setQuery(""); }}>Show all tasks</button> : <button className="primary" onClick={() => setPackageSelectionOpen(true)}>Choose package</button>}
                 </div>
               )}
             </main>
@@ -1963,7 +2117,7 @@ export function App() {
                 <label>Work level
                   <select value={levelFilter} onChange={(event) => setLevelFilter(event.target.value as "All levels" | WorkLevel)}>
                     <option>All levels</option>
-                    {levels.map((level) => <option key={level}>{level}</option>)}
+                    {availableLevels.map((level) => <option key={level}>{level}</option>)}
                   </select>
                 </label>
               </div>
@@ -1973,7 +2127,7 @@ export function App() {
                     applyDisabled={store.applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID) || (studentProfile.track === "interview" && task.level !== "Professional" && task.level !== "Advanced")}
                     applyLabel={store.applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID) ? "Applied" : studentProfile.track === "interview" && task.level !== "Professional" && task.level !== "Advanced" ? "Earn only" : "Apply"} />
                 ))}
-                {!visibleTasks.length && <div className="empty"><Search size={28} /><h2>No matching tasks</h2><p>Change your search or filters to see more verified opportunities.</p><button className="primary" onClick={() => { setFilter("All"); setLevelFilter("All levels"); setQuery(""); }}>Clear search and filters</button></div>}
+                {!visibleTasks.length && <div className="empty"><Search size={28} /><h2>{studentPackage ? "No matching tasks" : "Choose an earning package"}</h2><p>{studentPackage ? "Change your search or filters to see more verified opportunities." : "Select a package to see tasks available at your tier."}</p>{studentPackage ? <button className="primary" onClick={() => { setFilter("All"); setLevelFilter("All levels"); setQuery(""); }}>Clear search and filters</button> : <button className="primary" onClick={() => setPackageSelectionOpen(true)}>Choose package</button>}</div>}
               </div>
             </main>
           )}
@@ -1989,6 +2143,7 @@ export function App() {
                 completedByField={completedByField}
                 interviewFields={interviewFields}
                 certificates={certificates}
+                canInterview={studentPackage === "professional" || studentPackage === "advanced"}
                 onSave={setStudentProfile}
                 onUploadCertificate={uploadCertificates}
                 onRemoveCertificate={removeCertificate}
@@ -2070,7 +2225,7 @@ export function App() {
 
       {!detailTask && <DashboardNavigation account={account} page={page} go={go} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} />}
 
-      <AnimatePresence>{modal && <SignupPromptModal task={modal} onClose={() => setModal(null)} onSignup={() => { setModal(null); setLoginPreviewOpen(true); }} />}</AnimatePresence>
+      <AnimatePresence>{modal && <SignupPromptModal task={modal} onClose={() => setModal(null)} onSignup={() => { setModal(null); setAccessWorkspace("student"); }} />}</AnimatePresence>
       {certificatePreview && <CertificatePreview certificate={certificatePreview.certificate} url={certificatePreview.url} onClose={closeCertificatePreview} />}
       <AnimatePresence>{toastState && <Toast message={toastState.m} error={toastState.e} onClose={() => setToastState(null)} />}</AnimatePresence>
     </div>
