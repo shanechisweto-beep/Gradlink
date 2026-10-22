@@ -872,6 +872,16 @@ html[data-theme="dark"] .package-option.selected{border-color:#55dcff;box-shadow
 @media(max-width:540px){.package-grid{grid-template-columns:1fr}.package-selection{padding:20px 16px}}
 html[data-theme="dark"] .welcome-admin-logo{border-color:rgba(105,178,220,.36);background:rgba(61,180,230,.12);color:#6de5ff}
 .app-nav .nav-heading{width:100%;display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px;padding:0 7px 13px!important}
+.app-nav .nav-profile-bottom{margin-top:auto!important}
+.avatar img{display:block;width:100%;height:100%;border-radius:inherit;object-fit:cover}
+.profile-picture-editor{max-width:760px;display:flex;align-items:center;gap:16px;margin:14px 0;padding:16px;border:1px solid var(--line);border-radius:14px;background:var(--soft)}
+.profile-picture-editor>div:nth-child(2){display:grid;gap:5px}
+.profile-picture-editor small{color:var(--muted);font-size:12px}
+.profile-picture-actions{display:flex;align-items:center;gap:14px;margin-top:5px}
+.profile-picture-upload{position:relative;display:inline-flex;align-items:center;justify-content:center;cursor:pointer}
+.profile-picture-upload input{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0);white-space:nowrap;clip-path:inset(50%);margin:0;padding:0;border:0}
+.profile-picture-upload:focus-within{outline:3px solid var(--blue);outline-offset:3px}
+html[data-theme="dark"] .profile-picture-editor{background:var(--theme-surface);border-color:var(--theme-border)}
 .theme-mode-control{display:inline-flex;align-items:center;gap:3px;flex:0 0 auto;padding:3px;border:1px solid rgba(176,205,244,.24);border-radius:9px;background:rgba(7,27,63,.26)}
 .app-nav .theme-mode-control .theme-mode-option{width:28px!important;min-width:28px!important;height:27px!important;min-height:27px!important;flex:0 0 28px;display:grid!important;place-items:center!important;padding:0!important;border:1px solid transparent!important;border-radius:6px!important;background:transparent!important;color:#c1d6f5!important;cursor:pointer;transition:background-color .16s ease,color .16s ease,border-color .16s ease}
 .app-nav .theme-mode-control .theme-mode-option:hover{background:rgba(255,255,255,.12)!important;color:#fff!important}
@@ -1047,3 +1057,15 @@ html[data-theme="dark"] .moderation-confirm-listing span{color:#a9bdd3}
 html[data-theme="dark"] .signup-prompt-icon{border-color:#35536f;background:#173b59;color:#72def7}
 html[data-theme="dark"] .signup-prompt>.eyebrow,html[data-theme="dark"] .signup-prompt-task>span{color:#72def7}
 @media(max-width:520px){.signup-prompt{padding:22px}.signup-prompt-close{top:12px;right:12px}}
+
+/* Shared action sizing: consistent tap targets without stretching every CTA. */
+button{line-height:1.25}
+.primary{min-height:40px;padding:10px 15px;font-size:13px}
+.secondary-btn,.outline-btn,.apply-mini{min-height:36px;padding:8px 12px;font-size:12px}
+.login-preview-link{min-height:34px;padding:7px 10px!important}
+.account-pill{min-height:32px}
+.package-selection .access-submit{width:auto;min-width:min(100%,250px);min-height:42px;margin:12px 0 0;padding:10px 18px}
+@media(max-width:520px){
+  .package-selection .access-submit{width:100%;min-width:0}
+  .top-actions>.login-preview-link{min-height:34px}
+}

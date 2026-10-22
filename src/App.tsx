@@ -53,9 +53,17 @@ import {
 import { seedApplications, seedTasks } from "./data";
 
 const KEY = "gradlink-zw-v2";
+const ACCOUNT_KEY = `${KEY}-workspace-account`;
 const THEME_KEY = "gradlink-appearance";
 type ThemePreference = "light" | "dark" | "system";
 const CURRENT_STUDENT_ID = "student-default";
+
+function loadWorkspaceAccount(): AccountType {
+  try {
+    const saved = localStorage.getItem(ACCOUNT_KEY);
+    return saved === "company" || saved === "admin" ? saved : "student";
+  } catch { return "student"; }
+}
 
 function loadThemePreference(): ThemePreference {
   try {
@@ -69,7 +77,7 @@ function loadThemePreference(): ThemePreference {
 const fieldOptions: Array<"All" | Skill> = ["All", ...SKILL_OPTIONS];
 type AccountType = "student" | "company" | "admin";
 type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy };
-type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack; email?: string; phone?: string; paymentProvider?: "Inbucks" | "Omari" | "EcoCash"; paymentNumber?: string };
+type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack; email?: string; phone?: string; avatarDataUrl?: string; paymentProvider?: "Inbucks" | "Omari" | "EcoCash"; paymentNumber?: string };
 type CertificateMeta = { id: string; name: string; size: number; type: string; uploadedAt: string };
 const workLevels: WorkLevel[] = ["Entry level", "Intermediate"];
 const interviewLevels: WorkLevel[] = ["Professional", "Advanced"];
@@ -104,7 +112,7 @@ function loadStore(): Store {
         return {
           tasks: [...parsed.tasks, ...migratedDemoTasks].map((task) => {
             const seedTask = seedTasks.find((seed) => seed.id === task.id);
-            return { ...task, mine: task.mine ?? seedTask?.mine, level: seedTask?.level || task.level || "Intermediate" };
+            return { ...task, skill: (task.skill as string) === "AI/ML" ? "Machine Learning" : task.skill, mine: task.mine ?? seedTask?.mine, level: seedTask?.level || task.level || "Intermediate" };
           }),
           applications: [...parsed.applications, ...migratedDemoApplications].map((application) => {
             const isSeedApplication = /^a\d+$/.test(application.id);
@@ -133,7 +141,10 @@ function loadStore(): Store {
 function loadStudentProfile(): StudentProfileData {
   try {
     const raw = localStorage.getItem(`${KEY}-student-profile`);
-    if (raw) return { ...defaultStudentProfile, ...JSON.parse(raw) as Partial<StudentProfileData> };
+    if (raw) {
+      const saved = JSON.parse(raw) as Partial<StudentProfileData> & { studyField?: string };
+      return { ...defaultStudentProfile, ...saved, studyField: (saved.studyField === "AI/ML" ? "Machine Learning" : saved.studyField || defaultStudentProfile.studyField) as Skill };
+    }
   } catch (error) {
     console.error("Could not load the saved student profile", error);
   }
@@ -240,12 +251,32 @@ function CertificatePreview({ certificate, url, onClose }: { certificate: Certif
   </div>;
 }
 
-function Avatar({ initials = "TM", size = 34 }: { initials?: string; size?: number }) {
-  return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.36 }}>{initials}</div>;
+function Avatar({ initials = "TM", size = 34, src }: { initials?: string; size?: number; src?: string }) {
+  return <div className="avatar" style={{ width: size, height: size, fontSize: size * 0.36 }}>{src ? <img src={src} alt="" /> : initials}</div>;
 }
 
 function initialsFromName(name: string) {
   return name.trim().split(/\s+/).filter(Boolean).slice(0, 2).map((part) => part[0].toUpperCase()).join("") || "ST";
+}
+
+function resizeProfileImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = 320;
+      canvas.height = 320;
+      const context = canvas.getContext("2d");
+      if (!context) { URL.revokeObjectURL(objectUrl); reject(new Error("Image processing is unavailable")); return; }
+      const cropSize = Math.min(image.naturalWidth, image.naturalHeight);
+      context.drawImage(image, (image.naturalWidth - cropSize) / 2, (image.naturalHeight - cropSize) / 2, cropSize, cropSize, 0, 0, 320, 320);
+      URL.revokeObjectURL(objectUrl);
+      resolve(canvas.toDataURL("image/jpeg", 0.84));
+    };
+    image.onerror = () => { URL.revokeObjectURL(objectUrl); reject(new Error("Could not read this image")); };
+    image.src = objectUrl;
+  });
 }
 
 function ThemeModeControl({ preference, onChange, className = "" }: { preference: ThemePreference; onChange: (preference: ThemePreference) => void; className?: string }) {
@@ -287,7 +318,7 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
     <nav id="workspace-side-panel" className={`app-nav ${open ? "is-open" : "is-closed"}`} aria-label={`${account} navigation`} aria-hidden={!open}>
       <div className="nav-heading"><span>{account === "student" ? "STUDENT WORKSPACE" : account === "company" ? "COMPANY WORKSPACE" : "ADMIN CONSOLE"}</span><ThemeModeControl preference={themePreference} onChange={onThemeChange} /></div>
       {items.map(([id, label, Icon]) => (
-        <button key={id} type="button" tabIndex={open ? 0 : -1} className={page === id ? "active" : ""} aria-current={page === id ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
+        <button key={id} type="button" tabIndex={open ? 0 : -1} className={`${page === id ? "active" : ""} ${id === "profile" ? "nav-profile-bottom" : ""}`} aria-current={page === id ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
           <Icon size={21} />
           <span>{label}{id === "notifications" && notificationCount > 0 ? <small className="nav-count">{notificationCount}</small> : null}</span>
         </button>
@@ -716,7 +747,7 @@ function TaskCard({ task, onOpen, onApply, onView, applyDisabled = false, applyL
       </div>
       <div className="task-footer">
         <span>{task.applicants} applied</span>
-        <span className="match"><Zap size={13} /> AI Match {task.match}%</span>
+        <span className="match"><Zap size={13} /> Skill match {task.match}%</span>
         <div className="task-actions">
           <button type="button" className="secondary-btn" onClick={(e) => { e.stopPropagation(); onView(); }}>
             View
@@ -828,6 +859,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
   const [name, setName] = useState(profile.name);
   const [school, setSchool] = useState(profile.school);
   const [location, setLocation] = useState(profile.location);
+  const [avatarDataUrl, setAvatarDataUrl] = useState(profile.avatarDataUrl || "");
   const [studyField, setStudyField] = useState<Skill>(profile.studyField);
   const [track, setTrack] = useState<StudentTrack>(profile.track);
   const [paymentProvider, setPaymentProvider] = useState<StudentProfileData["paymentProvider"]>(profile.paymentProvider);
@@ -856,7 +888,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
     <div className="page">
       {profileView === "overview" ? <>
       <section className="profile-hero">
-        <Avatar initials={initialsFromName(profile.name)} size={80} />
+        <Avatar initials={initialsFromName(profile.name)} size={80} src={profile.avatarDataUrl} />
         <div>
           <h1>{profile.name}</h1>
           <p>{profile.school} • {profile.location}</p>
@@ -885,13 +917,20 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
       <button type="button" className="back-btn profile-subpage-back" onClick={() => setProfileView("overview")}><ArrowLeft size={18} /> Back to profile</button>
       {profileView === "personal" ? <>
         <div className="page-title"><span className="eyebrow">PERSONAL PROFILE</span><h1>Edit personal information</h1><p>Update your name and location details.</p></div>
+        <div className="profile-picture-editor"><Avatar initials={initialsFromName(name)} size={76} src={avatarDataUrl || undefined} /><div><strong>Profile picture</strong><small>Choose a JPG, PNG, or WebP image. It will be cropped to a square.</small><div className="profile-picture-actions"><label className="secondary-btn profile-picture-upload">{avatarDataUrl ? "Change picture" : "Upload picture"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (!file) return;
+          if (!file.type.startsWith("image/") || file.size > 5 * 1024 * 1024) { toast("Choose a JPG, PNG, or WebP image under 5 MB"); return; }
+          void resizeProfileImage(file).then(setAvatarDataUrl).catch(() => toast("Could not load that profile picture"));
+        }} /></label>{avatarDataUrl && <button type="button" className="text-btn" onClick={() => setAvatarDataUrl("")}>Remove</button>}</div></div></div>
         <form className="form-card profile-edit" onSubmit={(event) => {
           event.preventDefault();
           if (!name.trim() || !location.trim()) {
             toast("Enter your name and location before saving");
             return;
           }
-          onSave({ ...profile, name: name.trim(), location: location.trim() });
+          onSave({ ...profile, name: name.trim(), location: location.trim(), avatarDataUrl: avatarDataUrl || undefined });
           setProfileView("overview"); toast("Personal profile saved");
         }}>
           <label>Full name<input required value={name} onChange={(event) => setName(event.target.value)} /></label>
@@ -1513,7 +1552,7 @@ export function App() {
       return "TechNest Pvt";
     }
   });
-  const [account, setAccount] = useState<AccountType>("student");
+  const [account, setAccount] = useState<AccountType>(loadWorkspaceAccount);
   const [page, setPage] = useState("dashboard");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | Skill>("All");
@@ -1533,6 +1572,11 @@ export function App() {
   const adminLogoClicks = useRef(0);
   const adminLogoResetTimer = useRef<number | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+
+  useEffect(() => {
+    try { localStorage.setItem(ACCOUNT_KEY, account); }
+    catch (error) { console.warn("Could not save workspace selection", error); }
+  }, [account]);
 
   useEffect(() => {
     const media = window.matchMedia("(prefers-color-scheme: dark)");
@@ -2002,22 +2046,6 @@ export function App() {
         <div className="top-actions">
           <span className="account-label">{account === "student" ? "Student account" : account === "company" ? "Company account" : "Admin account"}</span>
           <button className="login-preview-link" type="button" onClick={() => setWelcomePageOpen(true)}>Welcome page</button>
-          <div className="account-switcher" aria-label="Account type selector">
-            {(["student", "company"] as AccountType[]).map((type) => (
-              <button
-                key={type}
-                type="button"
-                className={account === type ? "account-pill active" : "account-pill"}
-                onClick={() => {
-                  setAccount(type);
-                  if (type === "student") setPage("dashboard");
-                  if (type === "company") setPage("company-dashboard");
-                }}
-              >
-                {type === "student" ? "Student" : "Company"}
-              </button>
-            ))}
-          </div>
           <button aria-label="Notifications" onClick={() => {
             const updates = account === "student"
               ? studentApplications.filter((application) => application.status !== "applied" || application.interviewInvited).length
@@ -2026,7 +2054,7 @@ export function App() {
                 : store.tasks.filter((task) => !task.verified).length;
             toast(account === "student" ? `${updates} application update${updates === 1 ? "" : "s"}. Open your profile to review.` : account === "company" ? `${updates} application${updates === 1 ? "" : "s"} waiting for review.` : `${updates} task listing${updates === 1 ? "" : "s"} waiting for verification.`);
           }}><Bell size={20} /></button>
-          <Avatar initials={account === "student" ? initialsFromName(studentProfile.name) : account === "company" ? initialsFromName(companyName) : "AD"} />
+          <Avatar initials={account === "student" ? initialsFromName(studentProfile.name) : account === "company" ? initialsFromName(companyName) : "AD"} src={account === "student" ? studentProfile.avatarDataUrl : undefined} />
         </div>
       </header>
 

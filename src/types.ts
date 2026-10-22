@@ -20,7 +20,7 @@ export const SKILL_OPTIONS = [
   "Project Management",
   "Web Development",
   "Mobile Development",
-  "AI/ML",
+  "Machine Learning",
   "Photography",
   "Video Editing",
   "Customer Support",
