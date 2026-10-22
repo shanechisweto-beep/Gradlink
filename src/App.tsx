@@ -15,12 +15,14 @@ import {
   CircleDollarSign,
   ChevronRight,
   CircleUserRound,
+  Diamond,
   Clock3,
   Grid2x2,
   GraduationCap,
   Home,
   Link2,
   Layers3,
+  LogOut,
   Menu,
   MessageCircle,
   Moon,
@@ -41,6 +43,8 @@ import {
   Wallet,
   type LucideIcon
 } from "lucide-react";
+import type { User } from "@supabase/supabase-js";
+import { supabase, supabaseConfigured } from "./lib/supabase";
 import {
   SKILL_OPTIONS,
   type Application,
@@ -54,6 +58,7 @@ import { seedApplications, seedTasks } from "./data";
 
 const KEY = "gradlink-zw-v2";
 const ACCOUNT_KEY = `${KEY}-workspace-account`;
+const PENDING_AUTH_WORKSPACE_KEY = `${KEY}-pending-auth-workspace`;
 const THEME_KEY = "gradlink-appearance";
 type ThemePreference = "light" | "dark" | "system";
 const CURRENT_STUDENT_ID = "student-default";
@@ -76,13 +81,24 @@ function loadThemePreference(): ThemePreference {
 }
 const fieldOptions: Array<"All" | Skill> = ["All", ...SKILL_OPTIONS];
 type AccountType = "student" | "company" | "admin";
-type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy };
+type CompanyVerificationStatus = "not-verified" | "pending" | "verified";
+type CompanyVerification = { companyName: string; status: CompanyVerificationStatus; registrationNumber?: string; legalName?: string; businessEmail?: string; documentName?: string; documentFileId?: string; documentLink?: string; contactName?: string; contactPhone?: string; submittedAt?: string };
+type Store = { tasks: Task[]; applications: Application[]; policy: InterviewPolicy; companyVerifications: CompanyVerification[] };
 type StudentProfileData = { name: string; school: string; location: string; studyField: Skill; track: StudentTrack; email?: string; phone?: string; avatarDataUrl?: string; paymentProvider?: "Inbucks" | "Omari" | "EcoCash"; paymentNumber?: string };
 type CertificateMeta = { id: string; name: string; size: number; type: string; uploadedAt: string };
 const workLevels: WorkLevel[] = ["Entry level", "Intermediate"];
 const interviewLevels: WorkLevel[] = ["Professional", "Advanced"];
 const levels: WorkLevel[] = [...workLevels, ...interviewLevels];
 const defaultPolicy: InterviewPolicy = { studentCompletedTasks: 10, companyFilledTasks: 10, minimumInterviewInvites: 5 };
+const defaultCompanyVerifications: CompanyVerification[] = ["Tariro Pharmacy", "Gateway Church Mabelreign", "Nyasha Digital"].map((companyName) => ({ companyName, status: "verified" }));
+
+function companyIsVerified(companyName: string, records: CompanyVerification[]) {
+  return records.some((record) => record.status === "verified" && record.companyName.trim().toLocaleLowerCase() === companyName.trim().toLocaleLowerCase());
+}
+
+function completedAt(application: Application) {
+  return [...(application.events || [])].reverse().find((event) => event.type === "completed")?.at || application.createdAt;
+}
 const defaultStudentProfile: StudentProfileData = {
   name: "Tino Moyo",
   school: "HIT Software 3rd Year",
@@ -128,14 +144,15 @@ function loadStore(): Store {
               interviewInvited: application.interviewInvited || false
             };
           }),
-          policy: { ...defaultPolicy, ...parsed.policy }
+          policy: { ...defaultPolicy, ...parsed.policy },
+          companyVerifications: [...defaultCompanyVerifications, ...(Array.isArray(parsed.companyVerifications) ? parsed.companyVerifications.filter((record) => !defaultCompanyVerifications.some((demo) => demo.companyName.toLowerCase() === record.companyName?.toLowerCase())) : [])]
         };
       }
     }
   } catch (error) {
     console.error("Could not load saved GradLink data", error);
   }
-  return { tasks: seedTasks, applications: seedApplications, policy: defaultPolicy };
+  return { tasks: seedTasks, applications: seedApplications, policy: defaultPolicy, companyVerifications: defaultCompanyVerifications };
 }
 
 function loadStudentProfile(): StudentProfileData {
@@ -287,7 +304,7 @@ function ThemeModeControl({ preference, onChange, className = "" }: { preference
   </div>;
 }
 
-function DashboardNavigation({ account, page, go, notificationCount = 0, open, onToggle, themePreference, onThemeChange }: { account: AccountType; page: string; go: (p: string) => void; notificationCount?: number; open: boolean; onToggle: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
+function DashboardNavigation({ account, page, go, notificationCount = 0, candidateCount = 0, open, onToggle, themePreference, onThemeChange, profileName = "", profilePicture }: { account: AccountType; page: string; go: (p: string) => void; notificationCount?: number; candidateCount?: number; open: boolean; onToggle: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void; profileName?: string; profilePicture?: string }) {
   const items: Array<[string, string, LucideIcon]> =
     account === "student"
       ? [
@@ -303,7 +320,10 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
         ? [
             ["company-dashboard", "Dashboard", Grid2x2],
             ["company-jobs", "Post task", BriefcaseBusiness],
-            ["company-applicants", "Applicants", Users]
+            ["company-applicants", "Applicants", Users],
+            ["company-candidates", "Candidates", BellRing],
+            ["company-payouts", "Payouts", Wallet],
+            ["company-profile", "Company Profile", Building2]
           ]
         : [
             ["admin-overview", "Overview", Grid2x2],
@@ -319,8 +339,8 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, open, o
       <div className="nav-heading"><span>{account === "student" ? "STUDENT WORKSPACE" : account === "company" ? "COMPANY WORKSPACE" : "ADMIN CONSOLE"}</span><ThemeModeControl preference={themePreference} onChange={onThemeChange} /></div>
       {items.map(([id, label, Icon]) => (
         <button key={id} type="button" tabIndex={open ? 0 : -1} className={`${page === id ? "active" : ""} ${id === "profile" ? "nav-profile-bottom" : ""}`} aria-current={page === id ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
-          <Icon size={21} />
-          <span>{label}{id === "notifications" && notificationCount > 0 ? <small className="nav-count">{notificationCount}</small> : null}</span>
+          {id === "profile" ? <Avatar initials={initialsFromName(profileName)} size={26} src={profilePicture} /> : <Icon size={21} />}
+          <span>{label}{id === "notifications" && notificationCount > 0 ? <small className="nav-count">{notificationCount}</small> : null}{id === "company-candidates" && candidateCount > 0 ? <small className="candidate-nav-count">{candidateCount}</small> : null}</span>
         </button>
       ))}
     </nav>
@@ -358,30 +378,37 @@ function WelcomePage({ onBack, onContinue, onAdminLogoTap, themePreference, onTh
   </main>;
 }
 
-function AccountAccessPage({ workspace, onBack, onComplete }: { workspace: "student" | "company"; onBack: () => void; onComplete: (workspace: "student" | "company", mode: "create" | "signin", name: string) => void }) {
-  const [mode, setMode] = useState<"create" | "signin">("create");
+function AccountAccessPage({ workspace, onBack, onAuthenticate, onGoogleSignIn }: { workspace: "student" | "company"; onBack: () => void; onAuthenticate: (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string) => Promise<{ error?: string; message?: string }>; onGoogleSignIn: () => void }) {
+  const [mode, setMode] = useState<"create" | "signin">("signin");
   const [name, setName] = useState("");
+  const emailKey = `${KEY}-remembered-email-${workspace}`;
+  const [email, setEmail] = useState(() => { try { return localStorage.getItem(emailKey) || ""; } catch { return ""; } });
+  const [rememberEmail, setRememberEmail] = useState(true);
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [passwordError, setPasswordError] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
+  const [submitting, setSubmitting] = useState(false);
   const isStudent = workspace === "student";
-  const role = isStudent ? "student" : "company";
   return <main className="login-preview-page account-access-page">
     <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span></div><button className="secondary-btn" type="button" onClick={onBack}>Back</button></div>
     <section className="access-card" aria-labelledby="access-title">
       <span className="eyebrow">{isStudent ? "STUDENT ACCESS" : "COMPANY ACCESS"}</span>
       <h1 id="access-title">{mode === "create" ? "Create your account" : "Sign in to your account"}</h1>
       <p>{mode === "create" ? isStudent ? "Create an account to access GradLink. Choose an earning package after setup to start applying for paid work." : "Create an account to access your company workspace and post tasks." : "Enter your account details to continue to your workspace."}</p>
-      <form onSubmit={(event) => { event.preventDefault(); if (mode === "create" && password !== confirmPassword) { setPasswordError("Passwords do not match."); return; } setPasswordError(""); onComplete(workspace, mode, name.trim()); }}>
+      <form name={`${workspace}-${mode}`} autoComplete="on" onSubmit={async (event) => { event.preventDefault(); setAuthMessage(""); if (mode === "create" && password !== confirmPassword) { setPasswordError("Passwords do not match."); return; } setPasswordError(""); try { if (rememberEmail && email.trim()) localStorage.setItem(emailKey, email.trim()); else localStorage.removeItem(emailKey); } catch { /* browser autofill remains available if storage is blocked */ } setSubmitting(true); const result = await onAuthenticate(workspace, mode, name.trim(), email.trim(), password); setSubmitting(false); if (result.error) setPasswordError(result.error); if (result.message) setAuthMessage(result.message); }}>
         {mode === "create" && <label>{isStudent ? "Full name" : "Company name"}<input required autoComplete={isStudent ? "name" : "organization"} value={name} onChange={(event) => setName(event.target.value)} placeholder={isStudent ? "Your full name" : "Your company name"} /></label>}
-        <label>{isStudent ? "Email address" : "Work email"}<input required type="email" autoComplete="email" placeholder="you@example.com" /></label>
-        <label>Password<input required type="password" minLength={8} autoComplete={mode === "create" ? "new-password" : "current-password"} placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
+        <label>{isStudent ? "Email address" : "Work email"}<input required id={`${workspace}-email`} name="username" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
+        {mode === "signin" && <label className="remember-email-option"><input type="checkbox" checked={rememberEmail} onChange={(event) => setRememberEmail(event.target.checked)} />Remember my email on this device</label>}
+        <label>Password<input required id={`${workspace}-password`} name="password" type="password" minLength={8} autoComplete={mode === "create" ? "new-password" : "current-password"} placeholder="At least 8 characters" value={password} onChange={(event) => setPassword(event.target.value)} /></label>
         {mode === "create" && <label>Confirm password<input required type="password" minLength={8} autoComplete="new-password" placeholder="Enter your password again" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} /></label>}
-        {passwordError && <small className="form-error">{passwordError}</small>}
-        <button className="primary full access-submit" type="submit">{mode === "create" ? "Create account" : "Sign in"} <ArrowRight size={16} /></button>
+        {passwordError && <small className="form-error" role="alert">{passwordError}</small>}
+        <button className="primary full access-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : mode === "create" ? "Create account" : "Sign in"} {!submitting && <ArrowRight size={16} />}</button>
       </form>
+      {authMessage && <p className="auth-feedback" role="status">{authMessage}</p>}
+      {mode === "signin" && <><div className="access-divider"><span>or</span></div><button className="google-signin-btn" type="button" onClick={onGoogleSignIn} disabled={submitting}><svg className="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.6-4 6v5h6.5c3.8-3.5 6.1-8.6 6.1-14.7Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.5-5c-1.8 1.2-4.1 1.9-7 1.9-5.3 0-9.8-3.6-11.4-8.4H5.9v5.2C9.3 39.5 16.1 44 24 44Z"/><path fill="#FBBC05" d="M12.6 27.7a12.1 12.1 0 0 1 0-7.4v-5.2H5.9a20 20 0 0 0 0 17.8l6.7-5.2Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4 16.1 4 9.3 8.5 5.9 15.1l6.7 5.2c1.6-4.8 6.1-8.2 11.4-8.2Z"/></svg>Continue with Google</button></>}
       <p className="access-switch">{mode === "create" ? "Already have an account?" : "New to GradLink?"} <button type="button" onClick={() => setMode(mode === "create" ? "signin" : "create")}>{mode === "create" ? "Sign in" : "Create account"}</button></p>
-      <small className="access-prototype-note">Account access is a prototype flow; authentication is not connected yet.</small>
+      <small className="access-prototype-note">{supabaseConfigured ? "Your account session is managed securely by Supabase." : "Authentication is not configured yet. Add your Supabase project settings to sign in."}</small>
     </section>
   </main>;
 }
@@ -425,10 +452,11 @@ function StudentPackageDetailsPage({ packageId, profile, onBack, onSubmit }: { p
   </main>;
 }
 
-function StudentDashboard({ profile, applications, tasks, certificates, policy, interviewFields, packageTier, go }: {
-  profile: StudentProfileData; applications: Application[]; tasks: Task[]; certificates: CertificateMeta[]; policy: InterviewPolicy; interviewFields: Skill[]; packageTier: typeof STUDENT_PACKAGES[number]["id"] | null; go: (page: string) => void;
+function StudentDashboard({ profile, applications, tasks, certificates, policy, interviewFields, packageTier, isCompanyVerified, go }: {
+  profile: StudentProfileData; applications: Application[]; tasks: Task[]; certificates: CertificateMeta[]; policy: InterviewPolicy; interviewFields: Skill[]; packageTier: typeof STUDENT_PACKAGES[number]["id"] | null; isCompanyVerified: (companyName: string) => boolean; go: (page: string) => void;
 }) {
   const reduceMotion = useReducedMotion();
+  const interviewAccess = packageTier === "professional" || packageTier === "advanced";
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const completed = applications.filter((application) => application.status === "completed");
   const completedTaskCount = new Set(completed.map((application) => application.taskId)).size;
@@ -437,7 +465,7 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
     if (task) value[task.payment] += task.budget;
     return value;
   }, { USD: 0, EcoCash: 0 });
-  const recommendedTasks = tasks.filter((task) => task.verified && packageTier && taskLevelRank[task.level || "Intermediate"] <= packageRank[packageTier] && task.budget <= ({ general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY }[packageTier])).map((task) => {
+  const recommendedTasks = tasks.filter((task) => task.verified && (!interviewLevels.includes(task.level) || isCompanyVerified(task.company)) && packageTier && taskLevelRank[task.level || "Intermediate"] <= packageRank[packageTier] && task.budget <= ({ general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY }[packageTier])).map((task) => {
     const priorWork = applications.filter((application) => application.hiredAgain && application.status === "completed" && application.studentId === CURRENT_STUDENT_ID).filter((application) => {
       const completedTask = tasks.find((item) => item.id === application.taskId);
       return completedTask?.company === task.company && completedTask.skill === task.skill;
@@ -457,7 +485,7 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
     <motion.section className="dashboard-welcome" {...dashboardMotion(0)}><div><span className="eyebrow">STUDENT DASHBOARD</span><h1>Welcome back, {profile.name.split(" ")[0]}</h1><p>{profile.school} · {profile.location} · Track: {profile.track === "interview" ? "Interviews" : "Earning"}</p></div><button className="primary welcome-action" onClick={() => go("tasks")}><BriefcaseBusiness size={17} /> Browse tasks</button></motion.section>
     <section className="metrics-grid dashboard-metrics">
       <motion.div className="metric-card stat-card" {...dashboardMotion(1)}><span className="stat-icon"><CircleCheck /></span><div><span>Tasks completed</span><strong>{completedTaskCount}</strong><small>Verified completed assignments</small></div></motion.div>
-      <motion.div className="metric-card stat-card" {...dashboardMotion(2)}><span className="stat-icon"><UnlockKeyhole /></span><div><span>Interview unlock</span><strong>{profile.track === "interview" ? `${interviewFields.length} fields` : "Not enabled"}</strong><small>{profile.track === "interview" ? `${interviewFields.length} skill fields qualified` : "Switch tracks in your profile"}</small></div></motion.div>
+      <motion.div className="metric-card stat-card" {...dashboardMotion(2)}><span className="stat-icon"><UnlockKeyhole /></span><div><span>Interview access</span><strong>{interviewAccess ? "Enabled" : "Not enabled"}</strong><small>{interviewAccess ? `${packageTier === "advanced" ? "Advanced" : "Professional"} package includes interviews${profile.track === "interview" ? ` · ${interviewFields.length} fields qualified` : " · Choose the interview track in your profile to pursue them"}` : "Professional or Advanced package required"}</small></div></motion.div>
       <motion.div className="metric-card stat-card" {...dashboardMotion(3)}><span className="stat-icon"><CircleDollarSign /></span><div><span>Completed task value</span><strong>USD ${completedTaskValue.USD.toFixed(2)}</strong><small>EcoCash ${completedTaskValue.EcoCash.toFixed(2)} · estimated task value</small></div></motion.div>
     </section>
     <section className="dashboard-panel favorite-tasks-panel">
@@ -1147,12 +1175,13 @@ function CompanyDashboard({ tasks, applications, companyName, go }: {
   );
 }
 
-function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreateTask, embedded = false, go }: {
+function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreateTask, companyVerified, embedded = false, go }: {
   tasks: Task[];
   applications: Application[];
   companyName: string;
   onCompanyName: (name: string) => void;
   onCreateTask: (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => void;
+  companyVerified: boolean;
   embedded?: boolean;
   go: (page: string) => void;
 }) {
@@ -1167,6 +1196,10 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
 
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    if (interviewLevels.includes(level) && !companyVerified) {
+      setError("Professional and Advanced tasks are only for verified companies. Please upload company registration to get verified.");
+      return;
+    }
     const amount = Number(budget);
     if (!companyName.trim() || !title.trim() || description.trim().length < 10 || !Number.isFinite(amount) || amount <= 0 || !deadline) {
       setError("Enter a company name, complete task details, a positive budget and deadline.");
@@ -1230,11 +1263,104 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
   );
 }
 
-function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus, onInviteInterview, onRateApplicant, onHireAgain, onRecordPayment, go }: {
+function CompanyCandidates({ tasks, applications, go }: { tasks: Task[]; applications: Application[]; go: (page: string) => void }) {
+  const [query, setQuery] = useState("");
+  const [selectedSkill, setSelectedSkill] = useState("All");
+  const [dateRange, setDateRange] = useState("");
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const skills = [...new Set(tasks.map((task) => task.skill))];
+  const companyApplications = applications.filter((application) => taskById.has(application.taskId));
+  const datePresets = [{ value: "24h", label: "24 hours ago" }, { value: "7d", label: "7 days ago" }, ...Array.from({ length: 8 }, (_, index) => ({ value: `${index + 1}m`, label: `${index + 1} ${index ? "months" : "month"} ago` }))];
+  const matchesDateRange = (date: Date) => {
+    if (!Number.isFinite(date.getTime())) return false;
+    const now = new Date();
+    if (dateRange === "24h") return date.getTime() >= now.getTime() - 24 * 60 * 60 * 1000;
+    if (dateRange === "7d") return date.getTime() >= now.getTime() - 7 * 24 * 60 * 60 * 1000;
+    if (/^[1-8]m$/.test(dateRange)) {
+      const monthsAgo = Number(dateRange.slice(0, -1));
+      const start = new Date(now);
+      const targetMonth = now.getMonth() - monthsAgo;
+      start.setDate(1);
+      start.setMonth(targetMonth);
+      start.setDate(Math.min(now.getDate(), new Date(start.getFullYear(), start.getMonth() + 1, 0).getDate()));
+      return date >= start;
+    }
+    if (dateRange === "custom") {
+      const start = fromDate ? new Date(`${fromDate}T00:00:00`) : null;
+      const end = toDate ? new Date(`${toDate}T23:59:59.999`) : null;
+      return (!start || date >= start) && (!end || date <= end);
+    }
+    return true;
+  };
+  const candidates = applications.filter((application) => taskById.has(application.taskId)).filter((application) => {
+    const task = taskById.get(application.taskId)!;
+    if (selectedSkill !== "All" && task.skill !== selectedSkill) return false;
+    const appliedDate = new Date(application.createdAt);
+    if (!matchesDateRange(appliedDate)) return false;
+    const search = query.trim().toLocaleLowerCase();
+    return !search || task.skill.toLocaleLowerCase().includes(search);
+  }).sort((a, b) => Date.parse(b.createdAt) - Date.parse(a.createdAt));
+  return <main className="page company-candidates-page">
+    <div className="page-title"><span className="eyebrow">COMPANY INBOX</span><h1>Candidates</h1><p>Applications to tasks your company has posted.</p></div>
+    <div className="candidate-search-row"><div className="search-box company-candidates-search"><Search size={18} /><input aria-label="Search candidates by skillset" value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by skillset" />{query && <button type="button" aria-label="Clear search" onClick={() => setQuery("")}><X size={16} /></button>}</div><label className="candidate-select"><span>Date range</span><select aria-label="Filter candidates by date range" value={dateRange} onChange={(event) => setDateRange(event.target.value)}><option value="">Any time</option>{datePresets.map((preset) => <option key={preset.value} value={preset.value}>{preset.label}</option>)}<option value="custom">Custom date range</option></select></label></div>
+    {dateRange === "custom" && <div className="candidate-custom-date-range"><label className="candidate-select"><span>From date</span><input aria-label="From date" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label><label className="candidate-select"><span>To date</span><input aria-label="To date" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label><button type="button" className="secondary-btn" onClick={() => { setDateRange(""); setFromDate(""); setToDate(""); }}>Clear dates</button></div>}
+    <div className="filter-scroll candidate-filter-scroll"><button type="button" className={selectedSkill === "All" ? "selected" : ""} onClick={() => setSelectedSkill("All")}>All</button>{skills.map((skill) => <button type="button" key={skill} className={selectedSkill === skill ? "selected" : ""} onClick={() => setSelectedSkill(skill)}>{skill}</button>)}</div>
+    <p className="candidate-results-count">{candidates.length} candidate{candidates.length === 1 ? "" : "s"}</p>
+    {candidates.length ? <div className="jobs-panel">{candidates.map((application) => { const task = taskById.get(application.taskId)!; return <article className="candidate-notification-card" key={application.id}><Avatar initials={initialsFromName(application.studentName || "Student")} size={42} /><div className="candidate-notification-main"><strong>{application.studentName || "Student"}</strong><span>{task.title}</span><small>{task.skill} · Applied {new Date(application.createdAt).toLocaleDateString()}</small></div><span className={`status-pill ${application.status === "accepted" || application.status === "completed" ? "open" : "review"}`}>{application.status.replace(/-/g, " ")}</span><button type="button" className="secondary-btn" onClick={() => go("company-applicants")}>Review</button></article>; })}</div> : <div className="empty"><Users /><h2>No candidates match</h2><p>Try another skill filter or date.</p></div>}
+  </main>;
+}
+
+function CompanyProfile({ companyName, verification, onSubmit, onUploadDocument, toast }: { companyName: string; verification: CompanyVerification | undefined; onSubmit: (record: CompanyVerification) => void; onUploadDocument: (file: File) => Promise<string | null>; toast: (message: string, error?: boolean) => void }) {
+  const [formOpen, setFormOpen] = useState(false);
+  const [registrationNumber, setRegistrationNumber] = useState(verification?.registrationNumber || "");
+  const [legalName, setLegalName] = useState(verification?.legalName || companyName);
+  const [businessEmail, setBusinessEmail] = useState(verification?.businessEmail || "");
+  const [documentLink, setDocumentLink] = useState(verification?.documentLink || "");
+  const [documentName, setDocumentName] = useState(verification?.documentName || "");
+  const [documentFileId, setDocumentFileId] = useState(verification?.documentFileId || "");
+  const [contactName, setContactName] = useState(verification?.contactName || "");
+  const [contactPhone, setContactPhone] = useState(verification?.contactPhone || "");
+  const [error, setError] = useState("");
+  const status = verification?.status || "not-verified";
+  const statusLabel = status === "verified" ? "Verified Company" : status === "pending" ? "Pending Verification" : "Not Verified";
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const freeDomains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com"];
+    const domain = businessEmail.trim().split("@")[1]?.toLowerCase();
+    if (!domain || freeDomains.includes(domain)) { setError("Use a company-domain business email, not a personal email address."); return; }
+    if (!documentName && !/^https?:\/\//i.test(documentLink.trim())) { setError("Upload a document or provide a website/Facebook link."); return; }
+    setError("");
+    onSubmit({ companyName, status: "pending", registrationNumber: registrationNumber.trim(), legalName: legalName.trim(), businessEmail: businessEmail.trim(), documentName, documentFileId, documentLink: documentLink.trim(), contactName: contactName.trim(), contactPhone: contactPhone.trim(), submittedAt: new Date().toISOString() });
+    toast("Documents submitted, our team will review within 24 hours.");
+  };
+  return <main className="page company-profile-page"><div className="page-title"><span className="eyebrow">COMPANY PROFILE</span><h1>{companyName}</h1><p>Manage your company details and verification status.</p></div>
+    <section className="dashboard-panel company-verification-status"><div><h2>Verification status</h2><p>Verification unlocks Professional and Advanced task categories.</p></div><span className={`company-verification-badge status-${status}`}>{status === "verified" ? <BadgeCheck size={18} /> : <i />} {statusLabel}</span></section>
+    {status === "verified" ? <div className="dashboard-panel company-verified-note"><BadgeCheck /><div><strong>Your company is verified</strong><p>You can publish tasks in all work categories.</p></div></div> : status === "pending" ? <div className="dashboard-panel company-pending-note"><Clock3 /><div><strong>Documents submitted</strong><p>Documents submitted, our team will review within 24 hours.</p></div></div> : <><button className="primary company-verify-start" type="button" onClick={() => setFormOpen(true)}>Verify My Company</button>{formOpen && <form className="form-card company-verification-form" onSubmit={submit}><div><h2>Company verification details</h2><p>Provide your registration details and one supporting document or public company link.</p></div>
+      <label>Company registration number<input required value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="e.g. 12345/2020" /></label>
+      <label>Company name as shown on papers<input required value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
+      <label>Business email<input type="email" required value={businessEmail} onChange={(event) => setBusinessEmail(event.target.value)} placeholder="info@company.co.zw" /></label>
+      <label>Upload registration document<input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; const ext = file.name.split(".").pop()?.toLowerCase(); if (!(["pdf", "jpg", "jpeg", "png"].includes(ext || "")) || file.size > 5 * 1024 * 1024) { setError("Choose a PDF, JPG or PNG up to 5 MB."); return; } const id = await onUploadDocument(file); if (id) { setDocumentName(file.name); setDocumentFileId(id); setError(""); } }} /><small>{documentName || "Registration certificate or company letter · up to 5 MB"}</small></label>
+      <div className="company-or-divider"><span>OR</span></div><label>Company website or Facebook page<input type="url" value={documentLink} onChange={(event) => setDocumentLink(event.target.value)} placeholder="https://" /></label>
+      <div className="two-col"><label>Contact person name<input required value={contactName} onChange={(event) => setContactName(event.target.value)} /></label><label>Contact phone number<input required type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} /></label></div>
+      {error && <p className="field-error" role="alert">{error}</p>}<div className="company-verification-actions"><button className="secondary-btn" type="button" onClick={() => setFormOpen(false)}>Cancel</button><button className="primary" type="submit">Submit documents</button></div></form>}</>}
+  </main>;
+}
+
+function CompanyPayouts({ tasks, applications }: { tasks: Task[]; applications: Application[] }) {
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const companyApplications = applications.filter((application) => taskIds.has(application.taskId));
+  const totals = companyApplications.filter((application) => application.status === "accepted" || application.status === "completed").reduce((total, application) => { const task = tasks.find((item) => item.id === application.taskId); if (task) total[task.payment] += task.budget; return total; }, { USD: 0, EcoCash: 0 });
+  return <main className="page"><div className="page-title"><span className="eyebrow">COMPANY FINANCE</span><h1>Payouts</h1><p>Review accepted task budgets and payment records.</p></div><div className="metrics-grid"><div className="metric-card"><span>Accepted task budgets · USD</span><strong>${totals.USD.toFixed(2)}</strong></div><div className="metric-card"><span>Accepted task budgets · EcoCash</span><strong>${totals.EcoCash.toFixed(2)}</strong></div></div><section className="dashboard-panel company-payout-list"><h2>Task payment status</h2>{companyApplications.filter((application) => application.status === "accepted" || application.status === "completed").map((application) => { const task = tasks.find((item) => item.id === application.taskId)!; return <div className="job-row" key={application.id}><div><strong>{task.title}</strong><small>{application.studentName} · {task.payment}</small></div><span>{money(task)}</span><span className={`status-pill ${application.paymentRecordedAt ? "open" : "review"}`}>{application.paymentRecordedAt ? "Recorded" : application.status === "completed" ? "Awaiting record" : "In progress"}</span></div>; })}{!companyApplications.some((application) => application.status === "accepted" || application.status === "completed") && <p>No accepted task payments to show yet.</p>}<p className="form-note">Prototype only: GradLink does not hold, transfer, or withdraw funds.</p></section></main>;
+}
+
+function CompanyApplicants({ tasks, allTasks, applications, policy, isCompanyVerified, onSetStatus, onInviteInterview, onRateApplicant, onHireAgain, onRecordPayment, go }: {
   tasks: Task[];
   allTasks: Task[];
   applications: Application[];
   policy: InterviewPolicy;
+  isCompanyVerified: (companyName: string) => boolean;
   onSetStatus: (applicationId: string, status: Application["status"], feedback?: string) => void;
   onInviteInterview: (applicationId: string) => void;
   onRateApplicant: (applicationId: string, rating: number) => void;
@@ -1291,7 +1417,11 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
           const candidateHistory = applications.filter((item) => item.studentId === application.studentId && item.status === "completed").map((item) => {
             const historyTask = taskByIdAll.get(item.taskId);
             return { application: item, task: historyTask };
-          });
+          }).filter((item) => item.task).sort((a, b) => Date.parse(completedAt(b.application)) - Date.parse(completedAt(a.application)));
+          const skillCounts = new Map<string, number>();
+          candidateHistory.forEach(({ task: historyTask }) => skillCounts.set(historyTask!.skill, (skillCounts.get(historyTask!.skill) || 0) + 1));
+          const topSkills = [...skillCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
+          const mutualSkill = task && candidateHistory.some(({ task: historyTask }) => historyTask?.skill === task.skill) ? task.skill : task?.skill;
           const interviewEligible = Boolean(task
             && status !== "rejected"
             && application.studentTrack === "interview"
@@ -1306,10 +1436,17 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
               </div>
               <p>{application.proposal}</p>
               <div className="application-meta">Delivery: {application.deliveryDays} day{application.deliveryDays === 1 ? "" : "s"} · {application.studentTrack === "interview" ? "Interview pathway" : "Earning pathway"} · {task ? `${completedCount} completed ${task.skill} tasks` : ""}</div>
-              <details className="candidate-review"><summary>Review candidate profile and completed work ({candidateHistory.length})</summary>
+              <section className="candidate-review">
+                <header className="candidate-profile-heading"><Avatar initials={initialsFromName(application.studentName || "Student")} size={48} /><div><h2>{application.studentName || "Student"}</h2><p>{application.studentTrack === "interview" ? "Interview pathway" : "Student"} · {application.studentStudyField || "Emerging professional"}</p></div></header>
+                <div className="candidate-profile-section"><h3>Highlights</h3><p>You and {application.studentName || "this candidate"} both work in <strong>{mutualSkill || "this field"}</strong>.</p></div>
+                <div className="candidate-profile-section"><h3>About</h3><p>{application.proposal || "This candidate has not added an application proposal."}</p></div>
+                <div className="candidate-profile-section"><h3>Top skills</h3>{topSkills.length ? <div className="candidate-skill-list">{topSkills.map(([skill, count]) => <span key={skill}><Diamond size={14} />{skill}<small>{count} completed</small></span>)}</div> : <p>Completed work will build this candidate’s skill profile.</p>}</div>
+                <div className="candidate-profile-section"><h3>Experience <small>Completed tasks</small></h3>
+                  {candidateHistory.length ? <div className="candidate-timeline">{candidateHistory.map(({ application: historyItem, task: historyTask }) => {
+                    return <article className="candidate-experience" key={historyItem.id}><h4>{historyTask?.title || "Completed task"}</h4><p className="candidate-experience-company">{historyTask?.company || "Company"}{historyTask && isCompanyVerified(historyTask.company) && <span className="verified-company-mark" title="Verified company"><BadgeCheck size={15} /> Verified</span>}</p><p className="candidate-experience-meta">{new Date(completedAt(historyItem)).toLocaleDateString()} · {historyItem.deliveryDays} day{historyItem.deliveryDays === 1 ? "" : "s"} · {historyItem.rating ? `${historyItem.rating}/5 ★` : "No rating"}</p><p className="candidate-experience-meta">Reviewed by: {historyTask?.company || "Company"} Manager</p><div className="candidate-skill-list">{historyTask && <span><Diamond size={13} />{historyTask.skill}</span>}</div></article>;
+                  })}</div> : <p>No completed work recorded yet.</p>}
+                </div>
                 <div className="candidate-history">
-                  <p><strong>Completed work:</strong> {candidateHistory.length} verified task{candidateHistory.length === 1 ? "" : "s"} in total</p>
-                  {candidateHistory.length ? candidateHistory.map(({ application: historyItem, task: historyTask }) => <div className="job-row" key={historyItem.id}><div><strong>{historyTask?.title || "Completed task"}</strong><small>{historyTask?.skill || "Field unavailable"} · {historyTask?.company || "Company"} · {new Date(historyItem.createdAt).toLocaleDateString()}</small></div><span>{historyItem.rating ? `${historyItem.rating}/5 ★` : "No rating"}</span></div>) : <p>No completed work recorded yet.</p>}
                   <label>Rate completed work
                     <select aria-label={`Rate ${application.studentName}`} value={application.rating || ""} onChange={(event) => event.target.value && onRateApplicant(application.id, Number(event.target.value))}>
                       <option value="">Choose rating</option>{[5, 4, 3, 2, 1].map((value) => <option key={value} value={value}>{value} / 5</option>)}
@@ -1317,7 +1454,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, onSetStatus,
                   </label>
                   {application.rating && <p className="form-note">Your rating: {application.rating}/5{application.ratingFeedback ? ` · ${application.ratingFeedback}` : ""}</p>}
                 </div>
-              </details>
+              </section>
               {application.portfolio && /^https?:\/\//i.test(application.portfolio) && <a href={application.portfolio} target="_blank" rel="noopener noreferrer">View portfolio</a>}
               <div className="application-actions">
                 {status === "applied" && <>
@@ -1417,10 +1554,13 @@ function ModerationQueue({ tasks, onSetVerified, onDeleteTask }: {
     </section>
   );
 }
-function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerified, onDeleteTask, go }: {
+function AdminDashboard({ tasks, applications, policy, companyVerifications, onSetCompanyVerification, onDownloadVerificationDocument, onSetPolicy, onSetVerified, onDeleteTask, go }: {
   tasks: Task[];
   applications: Application[];
   policy: InterviewPolicy;
+  companyVerifications: CompanyVerification[];
+  onSetCompanyVerification: (companyName: string, status: CompanyVerificationStatus) => void;
+  onDownloadVerificationDocument: (record: CompanyVerification) => void;
   onSetPolicy: (policy: InterviewPolicy) => void;
   onSetVerified: (taskId: string, verified: boolean) => void;
   onDeleteTask: (taskId: string) => void;
@@ -1526,6 +1666,11 @@ function AdminDashboard({ tasks, applications, policy, onSetPolicy, onSetVerifie
         </aside>
       </div>
 
+      <section className="dashboard-panel admin-company-verifications">
+        <div className="section-title"><div><h2>Company Verifications</h2><p>Review business registration submissions</p></div><Building2 size={22} /></div>
+        {companyVerifications.filter((record) => record.status === "pending").length ? companyVerifications.filter((record) => record.status === "pending").map((record) => <div className="job-row" key={record.companyName}><div><strong>{record.legalName || record.companyName}</strong><small>{record.registrationNumber} · {record.businessEmail} · Contact: {record.contactName} ({record.contactPhone})</small>{record.documentName && <button className="text-btn" type="button" onClick={() => onDownloadVerificationDocument(record)}>Open document: {record.documentName}</button>}{record.documentLink && <a href={record.documentLink} target="_blank" rel="noreferrer">Open company link</a>}</div><div className="moderation-actions"><button className="moderation-btn moderation-btn-verify" type="button" onClick={() => onSetCompanyVerification(record.companyName, "verified")}><BadgeCheck size={15} />Approve</button><button className="moderation-btn moderation-btn-remove" type="button" onClick={() => onSetCompanyVerification(record.companyName, "not-verified")}>Reject</button></div></div>) : <p>No company verifications are pending.</p>}
+      </section>
+
       <section className="dashboard-panel admin-performance">
         <div className="section-title"><div><h2>Performance overview</h2><p>Completed unique tasks by skill</p></div><span className="metric-caption">{completedTasks} completed applications</span></div>
         {completedBySkill.map(({ skill, count }) => <div className="performance-row" key={skill}><span>{skill}</span><div className="performance-track"><i style={{ width: `${count / maxCompleted * 100}%` }} /></div><strong>{count}</strong></div>)}
@@ -1553,6 +1698,8 @@ export function App() {
     }
   });
   const [account, setAccount] = useState<AccountType>(loadWorkspaceAccount);
+  const [authUser, setAuthUser] = useState<User | null>(null);
+  const [authLoading, setAuthLoading] = useState(supabaseConfigured);
   const [page, setPage] = useState(() => account === "company" ? "company-dashboard" : account === "admin" ? "admin-overview" : "dashboard");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | Skill>("All");
@@ -1572,6 +1719,79 @@ export function App() {
   const adminLogoClicks = useRef(0);
   const adminLogoResetTimer = useRef<number | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
+  const [readCompanyCandidateIds, setReadCompanyCandidateIds] = useState<string[]>(() => {
+    try { return JSON.parse(localStorage.getItem(`${KEY}-read-company-candidates`) || "[]") as string[]; } catch { return []; }
+  });
+
+  const activateAuthenticatedUser = (user: User) => {
+    setAuthUser(user);
+    let pendingWorkspace: string | null = null;
+    try {
+      pendingWorkspace = localStorage.getItem(PENDING_AUTH_WORKSPACE_KEY);
+      localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY);
+    } catch { /* session can still be restored using Supabase metadata */ }
+    const metadata = user.user_metadata || {};
+    const metadataWorkspace = metadata.account_type === "student" || metadata.account_type === "company" ? metadata.account_type : null;
+    const requestedWorkspace = pendingWorkspace === "student" || pendingWorkspace === "company" ? pendingWorkspace : null;
+    if (metadataWorkspace && requestedWorkspace && metadataWorkspace !== requestedWorkspace) {
+      setWelcomePageOpen(true);
+      setToastState({ m: `This email is registered for the ${metadataWorkspace} workspace.`, e: true });
+      window.setTimeout(() => { void supabase?.auth.signOut(); }, 0);
+      return;
+    }
+    const workspace = metadataWorkspace || requestedWorkspace;
+    if (!workspace) {
+      setWelcomePageOpen(true);
+      setToastState({ m: "Choose Student or Company to finish setting up your account.", e: true });
+      return;
+    }
+    setAccount(workspace);
+    setWelcomePageOpen(false);
+    setAccessWorkspace(null);
+    setPackageSelectionOpen(false);
+    setPackageSetupTier(null);
+    const displayName = String(metadata.full_name || metadata.name || "").trim();
+    if (workspace === "student") {
+      setStudentProfile((profile) => ({ ...profile, ...(displayName ? { name: displayName } : {}), ...(user.email ? { email: user.email } : {}) }));
+      setPage("dashboard");
+      if (!studentPackage) setPackageSelectionOpen(true);
+    } else {
+      const company = String(metadata.company_name || displayName || user.email?.split("@")[0] || "My Company").trim();
+      setCompanyName(company);
+      setPage("company-dashboard");
+    }
+  };
+
+  useEffect(() => {
+    if (!supabase) { setAuthLoading(false); return; }
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      setAuthLoading(false);
+      if (session?.user) {
+        setAuthUser(session.user);
+        if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "USER_UPDATED") activateAuthenticatedUser(session.user);
+      } else {
+        setAuthUser(null);
+        if (event === "INITIAL_SESSION" || event === "SIGNED_OUT") {
+          setWelcomePageOpen(true);
+          setAccessWorkspace(null);
+          setPackageSelectionOpen(false);
+          setPackageSetupTier(null);
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
+
+  useEffect(() => {
+    if (!supabase || !authUser || authUser.user_metadata?.account_type) return;
+    const data = account === "company"
+      ? { account_type: account, company_name: companyName }
+      : { account_type: account, full_name: studentProfile.name };
+    void supabase.auth.updateUser({ data }).then(({ data: updated, error }) => {
+      if (error) { console.warn("Could not save the workspace on this Google account", error); return; }
+      if (updated.user) setAuthUser(updated.user);
+    });
+  }, [authUser, account, companyName, studentProfile.name]);
 
   useEffect(() => {
     try { localStorage.setItem(ACCOUNT_KEY, account); }
@@ -1664,8 +1884,59 @@ export function App() {
 
   const toast = (m: string, e?: boolean) => setToastState({ m, e });
 
+  const authenticateWithEmailPassword = async (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string): Promise<{ error?: string; message?: string }> => {
+    if (!supabase) return { error: "Authentication is not configured. Add VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY, then restart the app." };
+    try {
+      localStorage.setItem(PENDING_AUTH_WORKSPACE_KEY, workspace);
+      if (mode === "create") {
+        const { data, error } = await supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { account_type: workspace, ...(workspace === "student" ? { full_name: name } : { company_name: name }) } }
+        });
+        if (error) { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); return { error: error.message }; }
+        if (!data.session) return { message: "Account created. Check your email to confirm your address, then sign in." };
+        return {};
+      }
+      const { error } = await supabase.auth.signInWithPassword({ email, password });
+      if (error) { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); return { error: error.message }; }
+      return {};
+    } catch (error) {
+      try { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); } catch { /* no-op */ }
+      return { error: error instanceof Error ? error.message : "Could not connect to Supabase authentication." };
+    }
+  };
+
+  const signInWithGoogle = async (workspace: "student" | "company") => {
+    if (!supabase) { toast("Authentication is not configured. Add your Supabase project settings first.", true); return; }
+    try {
+      localStorage.setItem(PENDING_AUTH_WORKSPACE_KEY, workspace);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: { redirectTo: window.location.origin, queryParams: { prompt: "select_account" } }
+      });
+      if (error) { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); toast(error.message, true); }
+    } catch (error) {
+      try { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); } catch { /* no-op */ }
+      toast(error instanceof Error ? error.message : "Could not start Google sign-in.", true);
+    }
+  };
+
+  const signOut = async () => {
+    if (!supabase) return;
+    const { error } = await supabase.auth.signOut();
+    if (error) toast(error.message, true);
+  };
+
   const go = (p: string) => {
     setModal(null);
+    if (p === "company-candidates") {
+      const currentOwnedIds = new Set(store.tasks.filter((task) => task.mine && task.company.trim().toLowerCase() === companyName.trim().toLowerCase()).map((task) => task.id));
+      const readIds = store.applications.filter((application) => currentOwnedIds.has(application.taskId)).map((application) => application.id);
+      const updated = [...new Set([...readCompanyCandidateIds, ...readIds])];
+      setReadCompanyCandidateIds(updated);
+      try { localStorage.setItem(`${KEY}-read-company-candidates`, JSON.stringify(updated)); } catch { /* unread badge is session-only if storage is unavailable */ }
+    }
     setPage(p);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -1696,14 +1967,15 @@ export function App() {
       toast("This student has already submitted an application for this task");
       return;
     }
-    if (!studentPackageSelected) {
-      setPackageSelectionOpen(true);
-      return;
-    }
     setModal(task);
   };
 
   const createCompanyTask = (task: Omit<Task, "id" | "applicants" | "match" | "rating" | "verified" | "mine">) => {
+    if (interviewLevels.includes(task.level) && !companyIsVerified(companyName, store.companyVerifications)) {
+      toast("Professional and Advanced tasks are only for verified companies. Please upload company registration to get verified.", true);
+      setPage("company-profile");
+      return;
+    }
     addTask({
       ...task,
       id: `company-${Date.now()}`,
@@ -1860,6 +2132,26 @@ export function App() {
     toast("Interview thresholds saved");
   };
 
+  const saveCompanyVerification = (record: CompanyVerification) => setStore((current) => ({ ...current, companyVerifications: [...current.companyVerifications.filter((item) => item.companyName.trim().toLowerCase() !== record.companyName.trim().toLowerCase()), record] }));
+  const saveCompanyVerificationDocument = async (file: File) => {
+    const id = `company-verification-${companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    try { await saveCertificateFile(id, file); return id; }
+    catch (error) { console.error("Could not store company verification document", error); toast("Could not upload the verification document", true); return null; }
+  };
+  const downloadCompanyVerificationDocument = async (record: CompanyVerification) => {
+    if (!record.documentFileId) { toast("No uploaded document is attached", true); return; }
+    try {
+      const file = await readCertificateFile(record.documentFileId);
+      const url = URL.createObjectURL(file);
+      const anchor = document.createElement("a"); anchor.href = url; anchor.download = record.documentName || "company-verification-document"; anchor.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) { console.error("Could not retrieve company verification document", error); toast("Could not open the uploaded document", true); }
+  };
+  const setCompanyVerificationStatus = (name: string, status: CompanyVerificationStatus) => {
+    setStore((current) => ({ ...current, companyVerifications: current.companyVerifications.map((record) => record.companyName.trim().toLowerCase() === name.trim().toLowerCase() ? { ...record, status } : record) }));
+    toast(status === "verified" ? `${name} is now a verified company` : `${name} verification was rejected`);
+  };
+
   const uploadCertificates = async (files: FileList | null) => {
     if (!files?.length) return;
     const accepted: CertificateMeta[] = [];
@@ -1929,6 +2221,7 @@ export function App() {
     () =>
       store.tasks.filter((task) => {
         if (!studentPackage || !task.verified) return false;
+        if (interviewLevels.includes(task.level) && !companyIsVerified(task.company, store.companyVerifications)) return false;
         if (taskLevelRank[task.level || "Intermediate"] > packageRank[studentPackage]) return false;
         const taskBudgetLimit = { general: 20, intermediate: 35, professional: 50, advanced: Number.POSITIVE_INFINITY }[studentPackage];
         if (task.budget > taskBudgetLimit) return false;
@@ -1952,14 +2245,14 @@ export function App() {
         return preferenceScore(b) - preferenceScore(a)
           || Number(b.skill === studentProfile.studyField) - Number(a.skill === studentProfile.studyField);
       }),
-    [store.tasks, store.applications, filter, levelFilter, query, studentProfile.studyField, studentPackage]
+    [store.tasks, store.applications, store.companyVerifications, filter, levelFilter, query, studentProfile.studyField, studentPackage]
   );
 
   const detailId = page.startsWith("detail:") ? page.slice(7) : null;
   const detailTask = detailId ? store.tasks.find((task) => task.id === detailId) : null;
   const applied = detailTask ? store.applications.some((application) => application.taskId === detailTask.id && application.studentId === CURRENT_STUDENT_ID) : false;
 
-  if (loading) {
+  if (loading || authLoading) {
     return (
       <div className="splash">
         <div className="brand">GradLink <span>ZW</span></div>
@@ -1970,7 +2263,8 @@ export function App() {
     );
   }
 
-  const companyTasks = store.tasks.filter((task) => task.mine === true);
+  const companyTasks = store.tasks.filter((task) => task.mine === true && task.company.trim().toLowerCase() === companyName.trim().toLowerCase());
+  const unreadCandidateCount = store.applications.filter((application) => companyTasks.some((task) => task.id === application.taskId) && !readCompanyCandidateIds.includes(application.id)).length;
   const studentApplications = store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID);
   const completedByField = Object.fromEntries(SKILL_OPTIONS.map((skill) => [
     skill,
@@ -1999,21 +2293,7 @@ export function App() {
     setAccessWorkspace(workspace);
     setWelcomePageOpen(false);
   }} />;
-  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onBack={() => { setAccessWorkspace(null); setWelcomePageOpen(true); }} onComplete={(workspace, mode, name) => {
-    setAccessWorkspace(null);
-    if (workspace === "student") {
-      if (mode === "signin" && studentPackage) {
-        setAccount("student");
-        setPage("dashboard");
-        return;
-      }
-      setPackageSelectionOpen(true);
-      return;
-    }
-    if (mode === "create" && name) setCompanyName(name);
-    setAccount("company");
-    setPage("company-dashboard");
-  }} />;
+  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onBack={() => { setAccessWorkspace(null); setWelcomePageOpen(true); }} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} />;
   if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={(profile) => {
     setStudentProfile(profile);
     setStudentPackage(packageSetupTier);
@@ -2054,13 +2334,16 @@ export function App() {
                 : store.tasks.filter((task) => !task.verified).length;
             toast(account === "student" ? `${updates} application update${updates === 1 ? "" : "s"}. Open your profile to review.` : account === "company" ? `${updates} application${updates === 1 ? "" : "s"} waiting for review.` : `${updates} task listing${updates === 1 ? "" : "s"} waiting for verification.`);
           }}><Bell size={20} /></button>
+          {authUser && <button type="button" className="signout-action" onClick={signOut} title={`Sign out ${authUser.email || "of GradLink"}`}><LogOut size={17} /><span>Sign out</span></button>}
           <Avatar initials={account === "student" ? initialsFromName(studentProfile.name) : account === "company" ? initialsFromName(companyName) : "AD"} src={account === "student" ? studentProfile.avatarDataUrl : undefined} />
         </div>
       </header>
 
+      {!detailTask && page !== (account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview") && <div className="workspace-back-row"><button type="button" className="back-btn" onClick={() => go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview")}><ArrowLeft size={18} /> Back to dashboard</button></div>}
+
       {account === "student" && (
         <>
-          {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} packageTier={studentPackage} go={go} />}
+          {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} packageTier={studentPackage} isCompanyVerified={(name) => companyIsVerified(name, store.companyVerifications)} go={go} />}
           {page === "reviews" && <StudentReviews applications={studentApplications} tasks={store.tasks} />}
           {page === "applications" && <StudentSidePanel page="applications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
           {page === "notifications" && <StudentSidePanel page="notifications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
@@ -2194,6 +2477,7 @@ export function App() {
               companyName={companyName}
               onCompanyName={setCompanyName}
               onCreateTask={createCompanyTask}
+              companyVerified={companyIsVerified(companyName, store.companyVerifications)}
               go={go}
             />
           )}
@@ -2203,6 +2487,7 @@ export function App() {
               allTasks={store.tasks}
               applications={store.applications}
               policy={store.policy}
+              isCompanyVerified={(name) => companyIsVerified(name, store.companyVerifications)}
               onSetStatus={setApplicationStatus}
               onInviteInterview={inviteToInterview}
               onRateApplicant={rateApplicant}
@@ -2211,12 +2496,15 @@ export function App() {
               go={go}
             />
           )}
+          {page === "company-candidates" && <CompanyCandidates tasks={companyTasks} applications={store.applications} go={go} />}
+          {page === "company-profile" && <CompanyProfile companyName={companyName} verification={store.companyVerifications.find((record) => record.companyName.trim().toLowerCase() === companyName.trim().toLowerCase())} onSubmit={saveCompanyVerification} onUploadDocument={saveCompanyVerificationDocument} toast={toast} />}
+          {page === "company-payouts" && <CompanyPayouts tasks={companyTasks} applications={store.applications} />}
         </>
       )}
 
       {account === "admin" && (
         <>
-          {page === "admin-overview" && <AdminDashboard tasks={store.tasks} applications={store.applications} policy={store.policy} onSetPolicy={savePolicy} onSetVerified={setTaskVerified} onDeleteTask={deleteTask} go={go} />}
+          {page === "admin-overview" && <AdminDashboard tasks={store.tasks} applications={store.applications} policy={store.policy} companyVerifications={store.companyVerifications} onSetCompanyVerification={setCompanyVerificationStatus} onDownloadVerificationDocument={downloadCompanyVerificationDocument} onSetPolicy={savePolicy} onSetVerified={setTaskVerified} onDeleteTask={deleteTask} go={go} />}
           {page === "admin-students" && (
             <main className="page">
               <div className="page-title"><span className="eyebrow">STUDENTS</span><h1>Student overview</h1><p>Track student performance, reputation and activity.</p></div>
@@ -2247,11 +2535,7 @@ export function App() {
         </>
       )}
 
-      {!detailTask && account === "student" && !["dashboard", "tasks", "search", "profile", "applications", "reviews", "notifications", "badges"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("dashboard")}><ArrowLeft /> Back</button></main>}
-      {!detailTask && account === "company" && !["company-dashboard", "company-jobs", "company-applicants"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("company-dashboard")}><ArrowLeft /> Back</button></main>}
-      {!detailTask && account === "admin" && !["admin-overview", "admin-students", "admin-companies", "admin-moderation"].includes(page) && <main className="page"><button className="back-btn" onClick={() => go("admin-overview")}><ArrowLeft /> Back</button></main>}
-
-      {!detailTask && <DashboardNavigation account={account} page={page} go={go} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} />}
+      {!detailTask && <DashboardNavigation account={account} page={page} go={go} candidateCount={account === "company" ? unreadCandidateCount : 0} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} profileName={studentProfile.name} profilePicture={studentProfile.avatarDataUrl} />}
 
       <AnimatePresence>{modal && <SignupPromptModal task={modal} onClose={() => setModal(null)} onSignup={() => { setModal(null); setAccessWorkspace("student"); }} />}</AnimatePresence>
       {certificatePreview && <CertificatePreview certificate={certificatePreview.certificate} url={certificatePreview.url} onClose={closeCertificatePreview} />}

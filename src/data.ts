@@ -55,6 +55,11 @@ export const seedTasks: Task[] = [
     id: "t11", company: "TechNest Pvt", title: "UI Design for Mobile App",
     description: "Create a clean mobile interface for a local fintech product, including key screens and a clickable prototype.",
     budget: 120, payment: "USD", skill: "UX/UI", level: "Professional", deadline: "1w left", applicants: 3, match: 93, rating: 4.8, verified: true, mine: true
+  },
+  {
+    id: "t12", company: "TechNest Pvt", title: "Type my dissertation",
+    description: "Type and format a short dissertation document with consistent headings, spacing and page numbers.",
+    budget: 10, payment: "USD", skill: "Writing", level: "Entry level", deadline: "5d left", applicants: 0, match: 75, rating: 0, verified: false, mine: true
   }
 ];
 
