@@ -112,7 +112,7 @@ function loadStore(): Store {
         return {
           tasks: [...parsed.tasks, ...migratedDemoTasks].map((task) => {
             const seedTask = seedTasks.find((seed) => seed.id === task.id);
-            return { ...task, skill: (task.skill as string) === "AI/ML" ? "Machine Learning" : task.skill, mine: task.mine ?? seedTask?.mine, level: seedTask?.level || task.level || "Intermediate" };
+            return { ...task, skill: SKILL_OPTIONS.includes(task.skill as Skill) ? task.skill : "Research", mine: task.mine ?? seedTask?.mine, level: seedTask?.level || task.level || "Intermediate" };
           }),
           applications: [...parsed.applications, ...migratedDemoApplications].map((application) => {
             const isSeedApplication = /^a\d+$/.test(application.id);
@@ -143,7 +143,7 @@ function loadStudentProfile(): StudentProfileData {
     const raw = localStorage.getItem(`${KEY}-student-profile`);
     if (raw) {
       const saved = JSON.parse(raw) as Partial<StudentProfileData> & { studyField?: string };
-      return { ...defaultStudentProfile, ...saved, studyField: (saved.studyField === "AI/ML" ? "Machine Learning" : saved.studyField || defaultStudentProfile.studyField) as Skill };
+      return { ...defaultStudentProfile, ...saved, studyField: (SKILL_OPTIONS.includes(saved.studyField as Skill) ? saved.studyField : defaultStudentProfile.studyField) as Skill };
     }
   } catch (error) {
     console.error("Could not load the saved student profile", error);
@@ -1553,7 +1553,7 @@ export function App() {
     }
   });
   const [account, setAccount] = useState<AccountType>(loadWorkspaceAccount);
-  const [page, setPage] = useState("dashboard");
+  const [page, setPage] = useState(() => account === "company" ? "company-dashboard" : account === "admin" ? "admin-overview" : "dashboard");
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState<"All" | Skill>("All");
   const [levelFilter, setLevelFilter] = useState<"All levels" | WorkLevel>("All levels");
