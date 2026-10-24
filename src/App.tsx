@@ -417,11 +417,11 @@ function WorkspaceBackButton({ label, onClick, inHeader = false }: { label: stri
   return inHeader ? button : <div className="workspace-back-row">{button}</div>;
 }
 
-function WelcomePage({ onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
+function WelcomePage({ onBackToWorkspace, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onBackToWorkspace: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
   const [selected, setSelected] = useState<"student" | "company">("student");
   const workspaceLabel = selected === "student" ? "Student" : "Company";
   return <main className="login-preview-page">
-    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div></div>
+    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBackToWorkspace}>Back to workspace</button></div>
     <section className="login-intro login-standalone" aria-label="Welcome to GradLink">
       <div className="login-animation" aria-hidden="true">
         <img className="login-reference-backdrop" src="/login-orbits.jpg" alt="" />
@@ -448,7 +448,7 @@ function WelcomePage({ onContinue, onAdminLogoTap, themePreference, onThemeChang
   </main>;
 }
 
-function AccountAccessPage({ workspace, onAuthenticate, onGoogleSignIn }: { workspace: "student" | "company"; onAuthenticate: (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string) => Promise<{ error?: string; message?: string }>; onGoogleSignIn: () => void }) {
+function AccountAccessPage({ workspace, recoveryMode, onAuthenticate, onGoogleSignIn, onRequestPasswordReset, onSetNewPassword }: { workspace: "student" | "company"; recoveryMode: boolean; onAuthenticate: (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string) => Promise<{ error?: string; message?: string }>; onGoogleSignIn: () => void; onRequestPasswordReset: (email: string) => Promise<{ error?: string; message?: string }>; onSetNewPassword: (password: string) => Promise<{ error?: string; message?: string }> }) {
   const [mode, setMode] = useState<"create" | "signin">("signin");
   const [name, setName] = useState("");
   const emailKey = `${KEY}-remembered-email-${workspace}`;
@@ -459,13 +459,41 @@ function AccountAccessPage({ workspace, onAuthenticate, onGoogleSignIn }: { work
   const [passwordError, setPasswordError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmNewPassword, setConfirmNewPassword] = useState("");
   const isStudent = workspace === "student";
+  const submitPasswordReset = async () => {
+    if (!email.trim()) { setPasswordError("Enter your email address first."); return; }
+    setPasswordError("");
+    setSubmitting(true);
+    const result = await onRequestPasswordReset(email.trim());
+    setSubmitting(false);
+    if (result.error) setPasswordError(result.error);
+    if (result.message) setAuthMessage(result.message);
+  };
+  const submitNewPassword = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    if (newPassword.length < 8) { setPasswordError("Use at least 8 characters."); return; }
+    if (newPassword !== confirmNewPassword) { setPasswordError("Passwords do not match."); return; }
+    setPasswordError("");
+    setSubmitting(true);
+    const result = await onSetNewPassword(newPassword);
+    setSubmitting(false);
+    if (result.error) setPasswordError(result.error);
+    if (result.message) setAuthMessage(result.message);
+  };
   return <main className="login-preview-page account-access-page">
     <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span></div></div>
     <section className="access-card" aria-labelledby="access-title">
-      <span className="eyebrow">{isStudent ? "STUDENT ACCESS" : "COMPANY ACCESS"}</span>
-      <h1 id="access-title">{mode === "create" ? "Create your account" : "Sign in to your account"}</h1>
-      <p>{mode === "create" ? isStudent ? "Create an account to access GradLink. Choose an earning package after setup to start applying for paid work." : "Create an account to access your company workspace and post tasks." : "Enter your account details to continue to your workspace."}</p>
+      <span className="eyebrow">{recoveryMode ? "PASSWORD RECOVERY" : isStudent ? "STUDENT ACCESS" : "COMPANY ACCESS"}</span>
+      <h1 id="access-title">{recoveryMode ? "Choose a new password" : mode === "create" ? "Create your account" : "Sign in to your account"}</h1>
+      <p>{recoveryMode ? "Set a new password for your GradLink account." : mode === "create" ? isStudent ? "Create an account to access GradLink. Choose an earning package after setup to start applying for paid work." : "Create an account to access your company workspace and post tasks." : "Enter your account details to continue to your workspace."}</p>
+      {recoveryMode ? <form onSubmit={(event) => { void submitNewPassword(event); }}>
+        <label>New password<input required type="password" minLength={8} autoComplete="new-password" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} /></label>
+        <label>Confirm new password<input required type="password" minLength={8} autoComplete="new-password" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} /></label>
+        {passwordError && <small className="form-error" role="alert">{passwordError}</small>}
+        <button className="primary full access-submit" type="submit" disabled={submitting}>{submitting ? "Updating password…" : "Set new password"} {!submitting && <ArrowRight size={16} />}</button>
+      </form> : <>
       <form name={`${workspace}-${mode}`} autoComplete="on" onSubmit={async (event) => { event.preventDefault(); setAuthMessage(""); if (mode === "create" && password !== confirmPassword) { setPasswordError("Passwords do not match."); return; } setPasswordError(""); try { if (rememberEmail && email.trim()) localStorage.setItem(emailKey, email.trim()); else localStorage.removeItem(emailKey); } catch { /* browser autofill remains available if storage is blocked */ } setSubmitting(true); const result = await onAuthenticate(workspace, mode, name.trim(), email.trim(), password); setSubmitting(false); if (result.error) setPasswordError(result.error); if (result.message) setAuthMessage(result.message); }}>
         {mode === "create" && <label>{isStudent ? "Full name" : "Company name"}<input required autoComplete={isStudent ? "name" : "organization"} value={name} onChange={(event) => setName(event.target.value)} placeholder={isStudent ? "Your full name" : "Your company name"} /></label>}
         <label>{isStudent ? "Email address" : "Work email"}<input required id={`${workspace}-email`} name="username" type="email" autoComplete="username" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" /></label>
@@ -476,8 +504,10 @@ function AccountAccessPage({ workspace, onAuthenticate, onGoogleSignIn }: { work
         <button className="primary full access-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : mode === "create" ? "Create account" : "Sign in"} {!submitting && <ArrowRight size={16} />}</button>
       </form>
       {authMessage && <p className="auth-feedback" role="status">{authMessage}</p>}
+      {mode === "signin" && <p className="access-switch"><button type="button" onClick={() => { void submitPasswordReset(); }} disabled={submitting}>Forgot password?</button></p>}
       {mode === "signin" && <><div className="access-divider"><span>or</span></div><button className="google-signin-btn" type="button" onClick={onGoogleSignIn} disabled={submitting}><svg className="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.6-4 6v5h6.5c3.8-3.5 6.1-8.6 6.1-14.7Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.5-5c-1.8 1.2-4.1 1.9-7 1.9-5.3 0-9.8-3.6-11.4-8.4H5.9v5.2C9.3 39.5 16.1 44 24 44Z"/><path fill="#FBBC05" d="M12.6 27.7a12.1 12.1 0 0 1 0-7.4v-5.2H5.9a20 20 0 0 0 0 17.8l6.7-5.2Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4 16.1 4 9.3 8.5 5.9 15.1l6.7 5.2c1.6-4.8 6.1-8.2 11.4-8.2Z"/></svg>Continue with Google</button></>}
       <p className="access-switch">{mode === "create" ? "Already have an account?" : "New to GradLink?"} <button type="button" onClick={() => setMode(mode === "create" ? "signin" : "create")}>{mode === "create" ? "Sign in" : "Create account"}</button></p>
+      </>}
       {!supabaseConfigured && <small className="access-prototype-note">Sign-in is temporarily unavailable. Please try again later.</small>}
     </section>
   </main>;
@@ -2065,6 +2095,7 @@ export function App() {
   const [toastState, setToastState] = useState<{ m: string; e?: boolean } | null>(null);
   const [welcomePageOpen, setWelcomePageOpen] = useState(false);
   const [accessWorkspace, setAccessWorkspace] = useState<"student" | "company" | null>(null);
+  const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [packageSelectionOpen, setPackageSelectionOpen] = useState(false);
   const [packageSetupTier, setPackageSetupTier] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(null);
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
@@ -2119,11 +2150,20 @@ export function App() {
     if (!supabase) { setAuthLoading(false); return; }
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setAuthLoading(false);
+      if (event === "PASSWORD_RECOVERY") {
+        setPasswordRecoveryMode(true);
+        setAccessWorkspace(account === "company" ? "company" : "student");
+        setWelcomePageOpen(false);
+      }
       if (session?.user) {
+        if (window.location.hash.includes("access_token=")) {
+          window.history.replaceState(window.history.state, "", `${window.location.pathname}${window.location.search}`);
+        }
         setAuthUser(session.user);
         if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "USER_UPDATED") activateAuthenticatedUser(session.user);
       } else {
         setAuthUser(null);
+        setPasswordRecoveryMode(false);
         if (event === "INITIAL_SESSION" || event === "SIGNED_OUT") {
           setWelcomePageOpen(true);
           setAccessWorkspace(null);
@@ -2340,6 +2380,21 @@ export function App() {
     }
   };
 
+  const requestPasswordReset = async (email: string): Promise<{ error?: string; message?: string }> => {
+    if (!supabase) return { error: "Authentication is not configured." };
+    const { error } = await supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    if (error) return { error: error.message };
+    return { message: "If an account exists for that email, a password reset link has been sent. Check your inbox and spam folder." };
+  };
+
+  const setRecoveredPassword = async (password: string): Promise<{ error?: string; message?: string }> => {
+    if (!supabase) return { error: "Authentication is not configured." };
+    const { error } = await supabase.auth.updateUser({ password });
+    if (error) return { error: error.message };
+    setPasswordRecoveryMode(false);
+    return { message: "Your password has been updated." };
+  };
+
   const signInWithGoogle = async (workspace: "student" | "company") => {
     if (!supabase) { toast("Authentication is not configured. Add your Supabase project settings first.", true); return; }
     try {
@@ -2359,6 +2414,21 @@ export function App() {
     if (!supabase) return;
     const { error } = await supabase.auth.signOut();
     if (error) toast(error.message, true);
+  };
+
+  const returnToWorkspaceSignIn = async () => {
+    const workspace = account === "company" ? "company" : "student";
+    if (supabase && authUser) {
+      const { error } = await supabase.auth.signOut();
+      if (error) {
+        toast(error.message, true);
+        return;
+      }
+    }
+    try { localStorage.removeItem(PENDING_AUTH_WORKSPACE_KEY); } catch { /* no-op */ }
+    setAuthUser(null);
+    setWelcomePageOpen(false);
+    setAccessWorkspace(workspace);
   };
 
   const go = (p: string) => {
@@ -2784,11 +2854,11 @@ export function App() {
     : [];
 
   if (adminLoginOpen) return <AdminLoginPage onBack={() => setAdminLoginOpen(false)} onSubmit={() => toast("Admin authentication is not connected yet.", true)} />;
-  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onContinue={(workspace) => {
+  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onBackToWorkspace={() => { void returnToWorkspaceSignIn(); }} onContinue={(workspace) => {
     setAccessWorkspace(workspace);
     setWelcomePageOpen(false);
   }} />;
-  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} />;
+  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} recoveryMode={passwordRecoveryMode} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} onRequestPasswordReset={requestPasswordReset} onSetNewPassword={setRecoveredPassword} />;
   if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={async (profile, cvFile) => {
     if (!supabase || !authUser) {
       setToastState({ m: "Sign in with Supabase before activating a package.", e: true });
