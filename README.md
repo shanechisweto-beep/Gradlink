@@ -33,7 +33,14 @@ In Supabase **Authentication → URL Configuration**, add your local app URLs (`
 
 To enable Google, configure a Google OAuth web client and enter its client ID and secret under Supabase **Authentication → Sign In / Providers → Google**. Set the Google authorized JavaScript origin to the app origin and the authorized redirect URI to the callback URL shown on that Supabase provider page. The app redirects back to its current origin after Google authentication.
 
-The app uses Supabase Auth for account creation, email/password sign-in, Google OAuth, and persisted sessions. GradLink task, application, and profile data still use browser storage; they are not yet stored in Supabase tables or synchronized across users/devices.
+The app uses Supabase Auth for email/password account creation and sign-in, Google OAuth, and persisted sessions. Google sign-in requires the Google provider to be configured in Supabase. Student profile/package fields and Professional/Advanced CV uploads are being saved to Supabase. Task listings, applications, company records, certificates, and some preferences remain in browser storage and are not yet synchronized across users/devices.
+
+## Legal drafts
+
+- [Privacy Notice — review draft](docs/draft-privacy-policy.md)
+- [Terms of Service — review draft](docs/draft-terms-of-service.md)
+
+These documents contain unresolved operator and product decisions. Have them reviewed and complete their placeholders before publishing or relying on them as final terms.
 
 ## Local prototype data
 

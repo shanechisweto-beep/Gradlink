@@ -15,6 +15,8 @@ import {
   CircleDollarSign,
   ChevronRight,
   CircleUserRound,
+  FileText,
+  Globe,
   Diamond,
   Clock3,
   Grid2x2,
@@ -23,18 +25,23 @@ import {
   Link2,
   Layers3,
   LogOut,
+  MapPin,
+  Mail,
   Menu,
   MessageCircle,
   Moon,
   Monitor,
+  Phone,
   Search,
   ShieldCheck,
   Shield,
+  Save,
   Sun,
   Star,
   Trash2,
   Target,
   UnlockKeyhole,
+  Upload,
   UserRound,
   Users,
   X,
@@ -59,6 +66,7 @@ import { seedApplications, seedTasks } from "./data";
 const KEY = "gradlink-zw-v2";
 const ACCOUNT_KEY = `${KEY}-workspace-account`;
 const PENDING_AUTH_WORKSPACE_KEY = `${KEY}-pending-auth-workspace`;
+const READ_NOTIFICATIONS_KEY = `${KEY}-read-notifications`;
 const THEME_KEY = "gradlink-appearance";
 type ThemePreference = "light" | "dark" | "system";
 const CURRENT_STUDENT_ID = "student-default";
@@ -99,6 +107,64 @@ function companyIsVerified(companyName: string, records: CompanyVerification[]) 
 function completedAt(application: Application) {
   return [...(application.events || [])].reverse().find((event) => event.type === "completed")?.at || application.createdAt;
 }
+
+type StudentNotificationCategory = "Applications" | "Interviews" | "Tasks";
+type StudentNotification = {
+  id: string;
+  icon: LucideIcon;
+  title: string;
+  detail: string;
+  category: StudentNotificationCategory;
+  createdAt?: string;
+  destination: string;
+};
+
+function createStudentNotifications(applications: Application[], tasks: Task[]): StudentNotification[] {
+  const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const invites = applications.filter((application) => application.interviewInvited || application.status === "interview-invited");
+  const recommendations = tasks.filter((task) => task.verified && !applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID));
+  const eventDate = (application: Application, type: NonNullable<Application["events"]>[number]["type"]) =>
+    [...(application.events || [])].reverse().find((event) => event.type === type)?.at;
+  return [
+    ...invites.map((application) => ({
+      id: `invite-${application.id}`,
+      icon: GraduationCap,
+      title: `Interview invitation from ${taskById.get(application.taskId)?.company || "a company"}`,
+      detail: taskById.get(application.taskId)?.title || "View your application",
+      category: "Interviews" as const,
+      createdAt: eventDate(application, "interview-invited") || application.createdAt,
+      destination: "applications"
+    })),
+    ...applications.filter((application) => application.status === "accepted").map((application) => ({
+      id: `accepted-${application.id}`,
+      icon: CircleCheck,
+      title: "Your application was accepted",
+      detail: taskById.get(application.taskId)?.title || "View your application",
+      category: "Applications" as const,
+      createdAt: eventDate(application, "accepted") || application.createdAt,
+      destination: "applications"
+    })),
+    ...recommendations.slice(0, 1).map((task) => ({
+      id: `task-${task.id}`,
+      icon: Sparkles,
+      title: "New verified task available",
+      detail: task.title,
+      category: "Tasks" as const,
+      destination: `detail:${task.id}`
+    }))
+  ];
+}
+
+function loadReadNotificationIds() {
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(READ_NOTIFICATIONS_KEY) || "[]");
+    return Array.isArray(saved) && saved.every((id) => typeof id === "string") ? saved : [];
+  } catch (error) {
+    console.error("Could not load notification read state", error);
+    return [];
+  }
+}
+
 const defaultStudentProfile: StudentProfileData = {
   name: "Tino Moyo",
   school: "HIT Software 3rd Year",
@@ -334,17 +400,21 @@ function DashboardNavigation({ account, page, go, notificationCount = 0, candida
 
   return <>
     {open && <button type="button" className="nav-backdrop" aria-label="Close side panel" onClick={onToggle} />}
-    {!open && <button type="button" className="side-panel-toggle" aria-label="Open side panel" aria-expanded={false} aria-controls="workspace-side-panel" onClick={onToggle}><Menu size={21} /></button>}
     <nav id="workspace-side-panel" className={`app-nav ${open ? "is-open" : "is-closed"}`} aria-label={`${account} navigation`} aria-hidden={!open}>
       <div className="nav-heading"><span>{account === "student" ? "STUDENT WORKSPACE" : account === "company" ? "COMPANY WORKSPACE" : "ADMIN CONSOLE"}</span><ThemeModeControl preference={themePreference} onChange={onThemeChange} /></div>
       {items.map(([id, label, Icon]) => (
-        <button key={id} type="button" tabIndex={open ? 0 : -1} className={`${page === id ? "active" : ""} ${id === "profile" ? "nav-profile-bottom" : ""}`} aria-current={page === id ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
+        <button key={id} type="button" tabIndex={open ? 0 : -1} className={`${page === id || (id === "tasks" && page === "tasks-all") ? "active" : ""} ${id === "profile" ? "nav-profile-bottom" : ""}`} aria-current={page === id || (id === "tasks" && page === "tasks-all") ? "page" : undefined} onClick={() => { go(id); onToggle(); }}>
           {id === "profile" ? <Avatar initials={initialsFromName(profileName)} size={26} src={profilePicture} /> : <Icon size={21} />}
           <span>{label}{id === "notifications" && notificationCount > 0 ? <small className="nav-count">{notificationCount}</small> : null}{id === "company-candidates" && candidateCount > 0 ? <small className="candidate-nav-count">{candidateCount}</small> : null}</span>
         </button>
       ))}
     </nav>
   </>;
+}
+
+function WorkspaceBackButton({ label, onClick, inHeader = false }: { label: string; onClick: () => void; inHeader?: boolean }) {
+  const button = <button type="button" className={`secondary-btn workspace-back-button${inHeader ? " header-workspace-back" : ""}`} aria-label={label} onClick={onClick}><ArrowLeft size={16} /><span className={inHeader ? "workspace-back-label" : undefined}>{label}</span></button>;
+  return inHeader ? button : <div className="workspace-back-row">{button}</div>;
 }
 
 function WelcomePage({ onBack, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onBack: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
@@ -436,7 +506,7 @@ function StudentPackagePage({ onBack, onContinue }: { onBack: () => void; onCont
   </main>;
 }
 
-function StudentPackageDetailsPage({ packageId, profile, onBack, onSubmit }: { packageId: typeof STUDENT_PACKAGES[number]["id"]; profile: StudentProfileData; onBack: () => void; onSubmit: (profile: StudentProfileData) => void }) {
+function StudentPackageDetailsPage({ packageId, profile, onBack, onSubmit }: { packageId: typeof STUDENT_PACKAGES[number]["id"]; profile: StudentProfileData; onBack: () => void; onSubmit: (profile: StudentProfileData, cvFile?: File) => Promise<void> }) {
   const packageInfo = STUDENT_PACKAGES.find((item) => item.id === packageId)!;
   const needsFormalDetails = packageId === "professional" || packageId === "advanced";
   const [name, setName] = useState(profile.name === defaultStudentProfile.name ? "" : profile.name);
@@ -446,10 +516,13 @@ function StudentPackageDetailsPage({ packageId, profile, onBack, onSubmit }: { p
   const [phone, setPhone] = useState(profile.phone || "");
   const [paymentProvider, setPaymentProvider] = useState<StudentProfileData["paymentProvider"]>(profile.paymentProvider);
   const [paymentNumber, setPaymentNumber] = useState(profile.paymentNumber || "");
+  const [cvFile, setCvFile] = useState<File | undefined>();
+  const [saving, setSaving] = useState(false);
   return <main className="login-preview-page package-access-page"><div className="login-preview-top"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span><button className="secondary-btn" type="button" onClick={onBack}>Back to packages</button></div>
-    <section className="access-card package-details-card" aria-labelledby="package-details-title"><span className="eyebrow">{packageInfo.name.toUpperCase()} PACKAGE SETUP</span><h1 id="package-details-title">{needsFormalDetails ? "Complete your student details" : "Add your payment details"}</h1><p>{needsFormalDetails ? `Add the formal and payment details for your ${packageInfo.name} account.` : `General and Intermediate accounts only need payment details to receive earnings.`}</p><form onSubmit={(event) => { event.preventDefault(); onSubmit({ ...profile, ...(needsFormalDetails ? { name: name.trim(), school: school.trim(), location: location.trim(), email: email.trim(), phone: phone.trim() } : {}), paymentProvider, paymentNumber: paymentNumber.trim() }); }}>
+    <section className="access-card package-details-card" aria-labelledby="package-details-title"><span className="eyebrow">{packageInfo.name.toUpperCase()} PACKAGE SETUP</span><h1 id="package-details-title">{needsFormalDetails ? "Complete your student details" : "Add your payment details"}</h1><p>{needsFormalDetails ? `Add the formal and payment details for your ${packageInfo.name} account.` : `General and Intermediate accounts only need payment details to receive earnings.`}</p><form onSubmit={async (event) => { event.preventDefault(); if (needsFormalDetails && !cvFile) return; setSaving(true); try { await onSubmit({ ...profile, ...(needsFormalDetails ? { name: name.trim(), school: school.trim(), location: location.trim(), email: email.trim(), phone: phone.trim() } : {}), paymentProvider, paymentNumber: paymentNumber.trim() }, cvFile); } finally { setSaving(false); } }}>
       {needsFormalDetails && <><label>Full legal name<input required value={name} onChange={(event) => setName(event.target.value)} autoComplete="name" /></label><label>Email address<input required type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" /></label><label>Phone number<input required type="tel" value={phone} onChange={(event) => setPhone(event.target.value)} autoComplete="tel" /></label><label>School and course<input required value={school} onChange={(event) => setSchool(event.target.value)} /></label><label>Location<input required value={location} onChange={(event) => setLocation(event.target.value)} /></label></>}
-      <label>Payment method<select required value={paymentProvider || ""} onChange={(event) => setPaymentProvider((event.target.value || undefined) as StudentProfileData["paymentProvider"])}><option value="">Choose a method</option>{paymentOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}</select></label><label>Payment account or phone number<input required value={paymentNumber} onChange={(event) => setPaymentNumber(event.target.value)} placeholder="Where you receive your earnings" /></label><div className="payment-provider-options" aria-label="Payment method icons">{paymentOptions.map((option) => <button type="button" className={paymentProvider === option.name ? "payment-provider selected" : "payment-provider"} key={option.name} onClick={() => setPaymentProvider(option.name)} aria-label={`Select ${option.name}`}><img src={option.logo} alt="" loading="lazy" /><span>{option.name}</span></button>)}</div><button className="primary full access-submit" type="submit">Save details and activate {packageInfo.name} <ArrowRight size={16} /></button></form><small className="access-prototype-note">Details are stored in this browser prototype. Payments are not connected.</small></section>
+      {needsFormalDetails && <label>Upload your CV (PDF or DOCX, up to 10 MB)<input required type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document" onChange={(event) => { const file = event.currentTarget.files?.[0]; if (!file) return; const allowed = ["application/pdf", "application/vnd.openxmlformats-officedocument.wordprocessingml.document"]; if (!allowed.includes(file.type) || file.size > 10 * 1024 * 1024) { event.currentTarget.value = ""; setCvFile(undefined); return; } setCvFile(file); }} />{cvFile && <small>{cvFile.name} · {(cvFile.size / 1024 / 1024).toFixed(2)} MB · stored privately in Supabase</small>}</label>}
+      <label>Payment method<select required value={paymentProvider || ""} onChange={(event) => setPaymentProvider((event.target.value || undefined) as StudentProfileData["paymentProvider"])}><option value="">Choose a method</option>{paymentOptions.map((option) => <option key={option.name} value={option.name}>{option.name}</option>)}</select></label><label>Payment account or phone number<input required value={paymentNumber} onChange={(event) => setPaymentNumber(event.target.value)} placeholder="Where you receive your earnings" /></label><div className="payment-provider-options" aria-label="Payment method icons">{paymentOptions.map((option) => <button type="button" className={paymentProvider === option.name ? "payment-provider selected" : "payment-provider"} key={option.name} onClick={() => setPaymentProvider(option.name)} aria-label={`Select ${option.name}`}><img src={option.logo} alt="" loading="lazy" /><span>{option.name}</span></button>)}</div><button className="primary full access-submit" type="submit" disabled={saving || (needsFormalDetails && !cvFile)}>{saving ? "Saving securely…" : `Save details and activate ${packageInfo.name}`} <ArrowRight size={16} /></button></form><small className="access-prototype-note">CV uploads are stored in private Supabase Storage. Payments are not connected.</small></section>
   </main>;
 }
 
@@ -490,7 +563,7 @@ function StudentDashboard({ profile, applications, tasks, certificates, policy, 
       <motion.div className="metric-card stat-card" {...dashboardMotion(3)}><span className="stat-icon"><CircleDollarSign /></span><div><span>Completed task value</span><strong>USD ${completedTaskValue.USD.toFixed(2)}</strong><small>EcoCash ${completedTaskValue.EcoCash.toFixed(2)} · estimated task value</small></div></motion.div>
     </section>
     <section className="dashboard-panel favorite-tasks-panel">
-      <div className="section-title"><div><h2><Sparkles size={19} /> Best tasks for you</h2><p>Verified openings ranked by your field, company preferences, and task ratings.</p></div><button className="primary view-all-tasks" type="button" onClick={() => go("tasks")}>View all tasks <ChevronRight size={15} /></button></div>
+      <div className="section-title"><div><h2><Sparkles size={19} /> Best tasks for you</h2><p>Verified openings ranked by your field, company preferences, and task ratings.</p></div><button className="primary view-all-tasks" type="button" onClick={() => go("tasks-all")}>View all tasks <ChevronRight size={15} /></button></div>
       {recommendedTasks.length ? <div className="favorite-task-grid">{recommendedTasks.map(({ task, preference, relevant }) => <article className="recommended-task favorite-task" key={task.id}>
         <div className="favorite-task-heading"><span className="eyebrow">{task.skill}</span>{preference > 0 ? <span className="favorite-tag"><Star size={12} fill="currentColor" /> Preferred match</span> : relevant ? <span className="favorite-tag">For your field</span> : null}</div>
         <h3>{task.title}</h3><p className="favorite-company">{task.company}</p><p>{task.description}</p>
@@ -599,6 +672,7 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
     if (a.status === "rejected" || a.status === "withdrawn") return [{ label: a.status === "withdrawn" ? "Withdrawn" : "Not selected", complete: true }];
     return [
       { label: "Applied", complete: true },
+      ...(a.interviewInvited ? [{ label: "Interview invited", complete: true }] : []),
       { label: "Accepted", complete: ["accepted", "submitted", "completed"].includes(a.status) },
       { label: "In progress", complete: ["accepted", "submitted", "completed"].includes(a.status) },
       { label: "Submitted", complete: ["submitted", "completed"].includes(a.status) },
@@ -640,7 +714,7 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
         <div className="application-tracker-details"><span><small>Task reward</small><strong>{task ? money(task) : "Unavailable"}</strong></span><span><small>Deadline</small><strong>{task?.deadline || "Not available"}</strong></span><span><small>Delivery estimate</small><strong>{a.deliveryDays} day(s)</strong></span></div>
         <div className="application-timeline">{timeline(a).map((step, i) => <div key={step.label + i} className={"application-timeline-step " + (step.complete ? "complete" : "")}><i /><span>{step.label}</span></div>)}</div>
         <div className="application-next"><strong>What’s next?</strong><span>{next}</span></div>{a.companyFeedback && <div className="application-feedback"><strong>Company feedback</strong><p>{a.companyFeedback}</p></div>}
-        <div className="application-card-actions"><button className="secondary-btn" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Track application</button>{a.status === "accepted" && <button className="primary" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Submit work</button>}{a.status === "applied" && <button className="text-btn withdraw-application" type="button" onClick={() => { if (window.confirm("Withdraw this application? It will be closed and cannot be undone.")) onWithdraw(a.id); }}>Withdraw application</button>}</div>
+        <div className="application-card-actions"><button className="secondary-btn" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Track application</button>{a.status === "accepted" && <button className="primary" type="button" onClick={() => { setSelectedId(a.id); setWorkDraft(a.submittedWork || ""); }}>Submit work</button>}{["applied", "interview-invited"].includes(a.status) && <button className="text-btn withdraw-application" type="button" onClick={() => { if (window.confirm("Withdraw this application? It will be closed and cannot be undone.")) onWithdraw(a.id); }}>Withdraw application</button>}</div>
       </article>;
     })}</div> : applications.length ? <div className="empty"><Search /><h2>No matching applications</h2><p>Try changing your search or filters.</p><button className="secondary-btn" onClick={clearFilters}>Clear filters</button></div> : <div className="empty"><BriefcaseBusiness /><h2>You’re all caught up</h2><p>You have no applications yet. Explore tasks that match your skills.</p><button className="primary" onClick={() => go("tasks")}>Browse tasks</button></div>}
     <section className="application-activity"><h2>Recent application activity</h2>{activity.map((event) => <div className="application-activity-row" key={event.id}><span className="activity-dot" /><div><strong>{event.description}</strong><small>{taskById.get(event.application.taskId)?.title || "Task"} · {event.actor === "student" ? "You" : "Company"} · {new Date(event.at).toLocaleString()}</small></div></div>)}</section>
@@ -656,7 +730,7 @@ function StudentApplications({ applications, tasks, go, onSubmitWork, onWithdraw
   </main>;
 }
 
-function StudentSidePanel({ page, profile, applications, tasks, certificates, policy, interviewFields, go, onSubmitWork, onWithdraw }: {
+function StudentSidePanel({ page, profile, applications, tasks, certificates, policy, interviewFields, notifications, readNotificationIds, onMarkNotificationRead, onMarkAllNotificationsRead, go, onSubmitWork, onWithdraw }: {
   page: "applications" | "notifications" | "badges";
   profile: StudentProfileData;
   applications: Application[];
@@ -664,11 +738,17 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
   certificates: CertificateMeta[];
   policy: InterviewPolicy;
   interviewFields: Skill[];
+  notifications: StudentNotification[];
+  readNotificationIds: string[];
+  onMarkNotificationRead: (id: string) => void;
+  onMarkAllNotificationsRead: () => void;
   go: (page: string) => void;
   onSubmitWork: (applicationId: string, work: string) => void;
   onWithdraw: (applicationId: string) => void;
 }) {
   const [badgeFilter, setBadgeFilter] = useState<"all" | "earned" | "locked">("all");
+  const [notificationFilter, setNotificationFilter] = useState<"All" | StudentNotificationCategory>("All");
+  const [notificationQuery, setNotificationQuery] = useState("");
   const [selectedBadgeId, setSelectedBadgeId] = useState<string | null>(null);
   const badgeTriggerRef = useRef<HTMLButtonElement | null>(null);
   const badgeCloseRef = useRef<HTMLButtonElement | null>(null);
@@ -691,12 +771,12 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
   const taskById = new Map(tasks.map((task) => [task.id, task]));
   const completed = applications.filter((application) => application.status === "completed");
   const invites = applications.filter((application) => application.interviewInvited || application.status === "interview-invited");
-  const recommendations = tasks.filter((task) => task.verified && !applications.some((application) => application.taskId === task.id && application.studentId === CURRENT_STUDENT_ID));
-  const notifications = [
-    ...invites.map((application) => ({ id: `invite-${application.id}`, icon: GraduationCap, title: `Interview invitation from ${taskById.get(application.taskId)?.company || "a company"}`, detail: taskById.get(application.taskId)?.title || "View your application", action: () => go("profile") })),
-    ...applications.filter((application) => application.status === "accepted").map((application) => ({ id: `accepted-${application.id}`, icon: CircleCheck, title: "Your application was accepted", detail: taskById.get(application.taskId)?.title || "View your application", action: () => go("profile") })),
-    ...recommendations.slice(0, 1).map((task) => ({ id: `task-${task.id}`, icon: Sparkles, title: "New verified task available", detail: task.title, action: () => go(`detail:${task.id}`) }))
-  ];
+  const unreadNotificationCount = notifications.filter((notification) => !readNotificationIds.includes(notification.id)).length;
+  const filteredNotifications = notifications.filter((notification) => {
+    const matchesCategory = notificationFilter === "All" || notification.category === notificationFilter;
+    const matchesQuery = `${notification.title} ${notification.detail} ${notification.category}`.toLowerCase().includes(notificationQuery.trim().toLowerCase());
+    return matchesCategory && matchesQuery;
+  });
   const completedDates = completed.flatMap((application) => application.events?.filter((event) => event.type === "completed").map((event) => event.at) || []).sort((a, b) => Date.parse(a) - Date.parse(b));
   const inviteDates = invites.flatMap((application) => application.events?.filter((event) => event.type === "interview-invited").map((event) => event.at) || []).sort((a, b) => Date.parse(a) - Date.parse(b));
   const strongestFieldTaskCount = Math.max(0, ...SKILL_OPTIONS.map((skill) => completed.filter((application) => taskById.get(application.taskId)?.skill === skill).length));
@@ -714,8 +794,28 @@ function StudentSidePanel({ page, profile, applications, tasks, certificates, po
   const featuredBadge = badges.find((badge) => !badge.earned) || null;
 
   if (page === "applications") return <StudentApplications applications={applications} tasks={tasks} go={go} onSubmitWork={onSubmitWork} onWithdraw={onWithdraw} />;
-  if (page === "notifications") return <main className="page student-side-page"><div className="page-title"><h1><BellRing size={22} /> Notifications</h1><p>Updates about your applications, interviews, and new tasks.</p></div>
-    {notifications.length ? <div className="notification-list">{notifications.map(({ id, icon: Icon, title, detail, action }) => <button className="notification-row" key={id} type="button" onClick={action}><span className="notification-dot"><Icon size={15} /></span><span><strong>{title}</strong><small>{detail}</small></span><ChevronRight size={15} /></button>)}</div> : <div className="empty"><Bell /><h2>You’re all caught up</h2><p>New invitations and task matches will appear here.</p></div>}
+  if (page === "notifications") return <main className="page student-side-page notifications-page">
+    <div className="page-title notifications-heading"><div><span className="eyebrow">YOUR UPDATES</span><h1><BellRing size={22} /> Notifications</h1><p>Updates about your applications, interviews, and new tasks.</p></div><span className="notification-unread-summary">{unreadNotificationCount} unread</span></div>
+    <div className="notifications-toolbar">
+      <div className="notification-filters" role="group" aria-label="Filter notifications">
+        {(["All", "Applications", "Interviews", "Tasks"] as const).map((category) => <button type="button" key={category} className={notificationFilter === category ? "selected" : ""} aria-pressed={notificationFilter === category} onClick={() => setNotificationFilter(category)}>{category}{category === "All" && <span>{notifications.length}</span>}</button>)}
+      </div>
+      <label className="notification-search"><Search size={17} /><input type="search" value={notificationQuery} onChange={(event) => setNotificationQuery(event.target.value)} placeholder="Search notifications..." aria-label="Search notifications" /></label>
+      <button className="notification-mark-all" type="button" onClick={onMarkAllNotificationsRead} disabled={!unreadNotificationCount}><Check size={15} /> Mark all as read</button>
+    </div>
+    {notifications.length ? filteredNotifications.length ? <section className="notification-list" aria-label="Notification list">
+      <div className="notification-list-heading"><h2>Recent updates</h2><span>{filteredNotifications.length} notification{filteredNotifications.length === 1 ? "" : "s"}</span></div>
+      {filteredNotifications.map(({ id, icon: Icon, title, detail, category, createdAt, destination }) => {
+        const unread = !readNotificationIds.includes(id);
+        const dateLabel = createdAt && !Number.isNaN(Date.parse(createdAt)) ? new Date(createdAt).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" }) : "Recently added";
+        return <button className={`notification-row ${unread ? "is-unread" : ""}`} key={id} type="button" onClick={() => { onMarkNotificationRead(id); go(destination); }}>
+          <span className={`notification-dot category-${category.toLowerCase()}`}><Icon size={18} /></span>
+          <span className="notification-content"><strong>{title}</strong><span>{detail}</span><small>{dateLabel}</small></span>
+          <span className={`notification-category category-${category.toLowerCase()}`}>{category === "Applications" ? "Application" : category.slice(0, -1)}</span>
+          {unread && <i className="notification-unread-dot" aria-label="Unread" />}
+        </button>;
+      })}
+    </section> : <div className="empty notifications-empty-state"><Search /><h2>No matching notifications</h2><p>Try another category or search term.</p><button className="secondary-btn" type="button" onClick={() => { setNotificationFilter("All"); setNotificationQuery(""); }}>Clear filters</button></div> : <div className="empty notifications-empty-state"><Bell /><h2>You’re all caught up</h2><p>New invitations and verified task matches will appear here.</p><button className="primary" type="button" onClick={() => go("tasks")}>Browse tasks</button></div>}
   </main>;
   return <main className="page student-side-page achievement-centre">
     <div className="page-title achievement-heading"><div><span className="eyebrow">CAREER RECORD</span><h1><Award size={24} /> My Achievements</h1><p>Badges recognise your skills, completed work and professional milestones.</p></div></div>
@@ -790,10 +890,9 @@ function TaskCard({ task, onOpen, onApply, onView, applyDisabled = false, applyL
   );
 }
 
-function Detail({ task, applied, interviewTrack, onBack, onApply }: { task: Task; applied: boolean; interviewTrack: boolean; onBack: () => void; onApply: () => void }) {
+function Detail({ task, applied, interviewTrack, onApply }: { task: Task; applied: boolean; interviewTrack: boolean; onApply: () => void }) {
   return (
     <div className="page detail-page">
-      <button className="back-btn" onClick={onBack}><ArrowLeft size={19} /> Back</button>
       <div className="detail-head">
         <span className="eyebrow">{task.skill} TASK</span>
         <h1>{task.title}</h1>
@@ -943,7 +1042,7 @@ function StudentProfile({ toast, profile, applications, tasks, policy, completed
       </section>
       <section className="dashboard-panel profile-strength-panel profile-page-strength"><h2><UserRound size={19} /> Profile strength</h2><div className="strength-score"><strong>{profileStrength}%</strong><span>— {profileStrength >= 80 ? "Strong profile" : "Keep building"}</span></div><div className="progress strength-progress" role="progressbar" aria-label="Profile strength" aria-valuemin={0} aria-valuemax={100} aria-valuenow={profileStrength}><span style={{ width: `${profileStrength}%` }} /></div><p><Link2 size={15} /> {missingProfileItem}</p></section>
       </> : <>
-      <button type="button" className="back-btn profile-subpage-back" onClick={() => setProfileView("overview")}><ArrowLeft size={18} /> Back to profile</button>
+      <WorkspaceBackButton label="Back to profile" onClick={() => setProfileView("overview")} />
       {profileView === "personal" ? <>
         <div className="page-title"><span className="eyebrow">PERSONAL PROFILE</span><h1>Edit personal information</h1><p>Update your name and location details.</p></div>
         <div className="profile-picture-editor"><Avatar initials={initialsFromName(name)} size={76} src={avatarDataUrl || undefined} /><div><strong>Profile picture</strong><small>Choose a JPG, PNG, or WebP image. It will be cropped to a square.</small><div className="profile-picture-actions"><label className="secondary-btn profile-picture-upload">{avatarDataUrl ? "Change picture" : "Upload picture"}<input type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => {
@@ -1264,15 +1363,29 @@ function CompanyJobs({ tasks, applications, companyName, onCompanyName, onCreate
   );
 }
 
-function CompanyCandidates({ tasks, applications, go }: { tasks: Task[]; applications: Application[]; go: (page: string) => void }) {
+function CompanyCandidates({ tasks, allTasks, applications, policy, onInviteInterview, go }: {
+  tasks: Task[];
+  allTasks: Task[];
+  applications: Application[];
+  policy: InterviewPolicy;
+  onInviteInterview: (applicationId: string) => void;
+  go: (page: string) => void;
+}) {
   const [query, setQuery] = useState("");
   const [selectedSkill, setSelectedSkill] = useState("All");
   const [dateRange, setDateRange] = useState("");
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const taskById = new Map(tasks.map((task) => [task.id, task]));
+  const taskByIdAll = new Map(allTasks.map((task) => [task.id, task]));
   const skills = [...new Set(tasks.map((task) => task.skill))];
   const companyApplications = applications.filter((application) => taskById.has(application.taskId));
+  const completedForStudent = (studentId: string, skill: Skill) => new Set(
+    applications
+      .filter((application) => application.studentId === studentId && application.status === "completed")
+      .filter((application) => taskByIdAll.get(application.taskId)?.skill === skill)
+      .map((application) => application.taskId)
+  ).size;
   const datePresets = [{ value: "24h", label: "24 hours ago" }, { value: "7d", label: "7 days ago" }, ...Array.from({ length: 8 }, (_, index) => ({ value: `${index + 1}m`, label: `${index + 1} ${index ? "months" : "month"} ago` }))];
   const matchesDateRange = (date: Date) => {
     if (!Number.isFinite(date.getTime())) return false;
@@ -1309,43 +1422,286 @@ function CompanyCandidates({ tasks, applications, go }: { tasks: Task[]; applica
     {dateRange === "custom" && <div className="candidate-custom-date-range"><label className="candidate-select"><span>From date</span><input aria-label="From date" type="date" value={fromDate} max={toDate || undefined} onChange={(event) => setFromDate(event.target.value)} /></label><label className="candidate-select"><span>To date</span><input aria-label="To date" type="date" value={toDate} min={fromDate || undefined} onChange={(event) => setToDate(event.target.value)} /></label><button type="button" className="secondary-btn" onClick={() => { setDateRange(""); setFromDate(""); setToDate(""); }}>Clear dates</button></div>}
     <div className="filter-scroll candidate-filter-scroll"><button type="button" className={selectedSkill === "All" ? "selected" : ""} onClick={() => setSelectedSkill("All")}>All</button>{skills.map((skill) => <button type="button" key={skill} className={selectedSkill === skill ? "selected" : ""} onClick={() => setSelectedSkill(skill)}>{skill}</button>)}</div>
     <p className="candidate-results-count">{candidates.length} candidate{candidates.length === 1 ? "" : "s"}</p>
-    {candidates.length ? <div className="jobs-panel">{candidates.map((application) => { const task = taskById.get(application.taskId)!; return <article className="candidate-notification-card" key={application.id}><Avatar initials={initialsFromName(application.studentName || "Student")} size={42} /><div className="candidate-notification-main"><strong>{application.studentName || "Student"}</strong><span>{task.title}</span><small>{task.skill} · Applied {new Date(application.createdAt).toLocaleDateString()}</small></div><span className={`status-pill ${application.status === "accepted" || application.status === "completed" ? "open" : "review"}`}>{application.status.replace(/-/g, " ")}</span><button type="button" className="secondary-btn" onClick={() => go("company-applicants")}>Review</button></article>; })}</div> : <div className="empty"><Users /><h2>No candidates match</h2><p>Try another skill filter or date.</p></div>}
+    {candidates.length ? <div className="jobs-panel">{candidates.map((application) => {
+      const task = taskById.get(application.taskId)!;
+      const completedCount = completedForStudent(application.studentId, task.skill);
+      const companyCompletedCount = new Set(companyApplications
+        .filter((item) => item.status === "completed" && taskById.get(item.taskId)?.skill === task.skill)
+        .map((item) => item.taskId)).size;
+      const alreadyInvited = companyApplications.some((item) => item.studentId === application.studentId
+        && (item.interviewInvited || item.status === "interview-invited")
+        && taskById.get(item.taskId)?.skill === task.skill);
+      const interviewEligible = ["applied", "interview-invited"].includes(application.status)
+        && application.studentTrack === "interview"
+        && (task.level === "Professional" || task.level === "Advanced")
+        && completedCount >= policy.studentCompletedTasks
+        && companyCompletedCount >= policy.companyFilledTasks;
+      return <article className="candidate-notification-card" key={application.id}>
+        <Avatar initials={initialsFromName(application.studentName || "Student")} size={42} />
+        <div className="candidate-notification-main"><strong>{application.studentName || "Student"}</strong><span>{task.title}</span><small>{task.skill} · Applied {new Date(application.createdAt).toLocaleDateString()}</small></div>
+        <span className={`status-pill ${application.status === "accepted" || application.status === "completed" ? "open" : "review"}`}>{application.status.replace(/-/g, " ")}</span>
+        <div className="candidate-interview-actions">
+          {alreadyInvited
+            ? <span className="candidate-interview-sent"><Check size={14} /> Interview invited</span>
+            : <button type="button" className="secondary-btn" disabled={!interviewEligible} title={interviewEligible ? "Send an interview invitation" : `Requires Interview pathway, a Professional or Advanced listing, ${policy.studentCompletedTasks} completed student tasks in ${task.skill}, and ${policy.companyFilledTasks} completed company tasks in this field.`} onClick={() => onInviteInterview(application.id)}>Invite to interview</button>}
+          {!alreadyInvited && !interviewEligible && <small className="candidate-interview-requirements">Interview criteria not met</small>}
+        </div>
+        <button type="button" className="secondary-btn" onClick={() => go("company-applicants")}>Review</button>
+      </article>;
+    })}</div> : <div className="empty"><Users /><h2>No candidates match</h2><p>Try another skill filter or date.</p></div>}
   </main>;
 }
 
-function CompanyProfile({ companyName, verification, onSubmit, onUploadDocument, toast }: { companyName: string; verification: CompanyVerification | undefined; onSubmit: (record: CompanyVerification) => void; onUploadDocument: (file: File) => Promise<string | null>; toast: (message: string, error?: boolean) => void }) {
-  const [formOpen, setFormOpen] = useState(false);
+type CompanyProfileDetails = {
+  industry: string;
+  website: string;
+  location: string;
+  email: string;
+  phone: string;
+  description: string;
+  logoFileId: string;
+  documents: Array<{ kind: "registration" | "tax-clearance" | "director-id"; name: string; fileId: string; uploadedAt: string }>;
+};
+
+const companyIndustries = ["Technology", "Agriculture", "Arts & Entertainment", "Education", "Finance", "Healthcare", "Hospitality", "Manufacturing", "Non-profit", "Retail", "Transport", "Other"];
+const companyDocumentTypes: Array<{ kind: CompanyProfileDetails["documents"][number]["kind"]; label: string }> = [
+  { kind: "registration", label: "Business Registration Certificate" },
+  { kind: "tax-clearance", label: "Tax Clearance Certificate" },
+  { kind: "director-id", label: "Director ID / Passport" }
+];
+
+function CompanyProfile({ companyName, verification, tasks, applications, onSubmit, onUploadDocument, onDeleteDocument, onReadDocument, go, toast }: {
+  companyName: string;
+  verification: CompanyVerification | undefined;
+  tasks: Task[];
+  applications: Application[];
+  onSubmit: (record: CompanyVerification) => void;
+  onUploadDocument: (file: File) => Promise<string | null>;
+  onDeleteDocument: (fileId: string) => Promise<void>;
+  onReadDocument: (fileId: string) => Promise<Blob>;
+  go: (page: string) => void;
+  toast: (message: string, error?: boolean) => void;
+}) {
+  const profileKey = `${KEY}-company-profile-${encodeURIComponent(companyName.trim().toLowerCase())}`;
+  const [profile, setProfile] = useState<CompanyProfileDetails>(() => {
+    try {
+      const saved = localStorage.getItem(profileKey);
+      if (saved) {
+        const parsed = JSON.parse(saved) as Partial<CompanyProfileDetails>;
+        return {
+          industry: parsed.industry || "",
+          website: parsed.website || verification?.documentLink || "",
+          location: parsed.location || "",
+          email: parsed.email || verification?.businessEmail || "",
+          phone: parsed.phone || verification?.contactPhone || "",
+          description: parsed.description || "",
+          logoFileId: parsed.logoFileId || "",
+          documents: Array.isArray(parsed.documents) ? parsed.documents : []
+        };
+      }
+    } catch (error) {
+      console.error("Could not load the company profile", error);
+    }
+    return {
+      industry: "",
+      website: verification?.documentLink || "",
+      location: "",
+      email: verification?.businessEmail || "",
+      phone: verification?.contactPhone || "",
+      description: "",
+      logoFileId: "",
+      documents: verification?.documentFileId && verification.documentName
+        ? [{ kind: "registration", name: verification.documentName, fileId: verification.documentFileId, uploadedAt: verification.submittedAt || new Date().toISOString() }]
+        : []
+    };
+  });
+  const [draft, setDraft] = useState(profile);
   const [registrationNumber, setRegistrationNumber] = useState(verification?.registrationNumber || "");
   const [legalName, setLegalName] = useState(verification?.legalName || companyName);
-  const [businessEmail, setBusinessEmail] = useState(verification?.businessEmail || "");
-  const [documentLink, setDocumentLink] = useState(verification?.documentLink || "");
-  const [documentName, setDocumentName] = useState(verification?.documentName || "");
-  const [documentFileId, setDocumentFileId] = useState(verification?.documentFileId || "");
+  const [documentLink, setDocumentLink] = useState(verification?.documentLink || profile.website);
   const [contactName, setContactName] = useState(verification?.contactName || "");
-  const [contactPhone, setContactPhone] = useState(verification?.contactPhone || "");
   const [error, setError] = useState("");
+  const [logoUrl, setLogoUrl] = useState("");
+  const [uploading, setUploading] = useState<string | null>(null);
   const status = verification?.status || "not-verified";
-  const statusLabel = status === "verified" ? "Verified Company" : status === "pending" ? "Pending Verification" : "Not Verified";
-  const submit = (event: FormEvent<HTMLFormElement>) => {
+  const statusLabel = status === "verified" ? "Verified" : status === "pending" ? "Pending" : "Not Verified";
+  const companyApplications = applications.filter((application) => tasks.some((task) => task.id === application.taskId));
+  const hiredStudentCount = new Set(companyApplications.filter((application) => application.status === "accepted" || application.status === "completed").map((application) => application.studentId)).size;
+  const completionFields = [companyName, profile.industry, profile.website, profile.location, profile.email, profile.phone, profile.description, profile.logoFileId];
+  const completion = Math.round(completionFields.filter((field) => field.trim()).length / completionFields.length * 100);
+
+  useEffect(() => {
+    let objectUrl = "";
+    if (profile.logoFileId) {
+      void onReadDocument(profile.logoFileId).then((file) => {
+        objectUrl = URL.createObjectURL(file);
+        setLogoUrl(objectUrl);
+      }).catch((readError: unknown) => {
+        console.error("Could not load the company logo", readError);
+        toast("Could not load the saved company logo", true);
+      });
+    } else {
+      setLogoUrl("");
+    }
+    return () => {
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [profile.logoFileId, onReadDocument]);
+
+  const saveProfile = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    try {
+      localStorage.setItem(profileKey, JSON.stringify(draft));
+      setProfile(draft);
+      toast("Company profile saved");
+    } catch (saveError) {
+      console.error("Could not save the company profile", saveError);
+      toast("Could not save the company profile in this browser", true);
+    }
+  };
+
+  const uploadProfileFile = async (file: File, kind: "logo" | CompanyProfileDetails["documents"][number]["kind"]) => {
+    const isLogo = kind === "logo";
+    const extension = file.name.split(".").pop()?.toLowerCase() || "";
+    const allowed = isLogo ? ["png", "jpg", "jpeg", "webp"] : ["pdf", "jpg", "jpeg", "png"];
+    const maxSize = isLogo ? 2 * 1024 * 1024 : 5 * 1024 * 1024;
+    if (!allowed.includes(extension) || file.size > maxSize) {
+      toast(isLogo ? "Choose a PNG, JPG or WebP logo up to 2 MB" : "Choose a PDF, JPG or PNG document up to 5 MB", true);
+      return;
+    }
+    setUploading(kind);
+    try {
+      const fileId = await onUploadDocument(file);
+      if (!fileId) return;
+      if (isLogo) {
+        setDraft((current) => ({ ...current, logoFileId: fileId }));
+        setProfile((current) => ({ ...current, logoFileId: fileId }));
+        try {
+          localStorage.setItem(profileKey, JSON.stringify({ ...profile, logoFileId: fileId }));
+        } catch (saveError) {
+          console.error("Could not save the company logo reference", saveError);
+          toast("Logo uploaded but its reference could not be saved", true);
+          return;
+        }
+        toast("Company logo uploaded");
+      } else {
+        const document = { kind, name: file.name, fileId, uploadedAt: new Date().toISOString() };
+        const updated = { ...profile, documents: [...profile.documents.filter((item) => item.kind !== kind), document] };
+        try {
+          localStorage.setItem(profileKey, JSON.stringify(updated));
+          setProfile(updated);
+          setDraft((current) => ({ ...current, documents: updated.documents }));
+          toast(`${companyDocumentTypes.find((item) => item.kind === kind)?.label || "Document"} uploaded`);
+        } catch (saveError) {
+          console.error("Could not save the company document reference", saveError);
+          await onDeleteDocument(fileId);
+          toast("The document could not be saved to this browser", true);
+        }
+      }
+    } catch (uploadError) {
+      console.error("Could not upload company profile file", uploadError);
+      toast("Could not upload the selected file", true);
+    } finally {
+      setUploading(null);
+    }
+  };
+
+  const removeDocument = async (kind: CompanyProfileDetails["documents"][number]["kind"]) => {
+    const document = profile.documents.find((item) => item.kind === kind);
+    if (!document) return;
+    try {
+      await onDeleteDocument(document.fileId);
+      const updated = { ...profile, documents: profile.documents.filter((item) => item.kind !== kind) };
+      localStorage.setItem(profileKey, JSON.stringify(updated));
+      setProfile(updated);
+      setDraft((current) => ({ ...current, documents: updated.documents }));
+      toast("Verification document removed");
+    } catch (deleteError) {
+      console.error("Could not remove the company verification document", deleteError);
+      toast("Could not remove the verification document", true);
+    }
+  };
+
+  const submitVerification = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     const freeDomains = ["gmail.com", "yahoo.com", "outlook.com", "hotmail.com", "icloud.com", "live.com"];
-    const domain = businessEmail.trim().split("@")[1]?.toLowerCase();
+    const domain = profile.email.trim().split("@")[1]?.toLowerCase();
     if (!domain || freeDomains.includes(domain)) { setError("Use a company-domain business email, not a personal email address."); return; }
-    if (!documentName && !/^https?:\/\//i.test(documentLink.trim())) { setError("Upload a document or provide a website/Facebook link."); return; }
+    const registration = profile.documents.find((document) => document.kind === "registration");
+    if (!registration && !/^https?:\/\//i.test(documentLink.trim())) { setError("Upload a business registration certificate or provide a company website link."); return; }
     setError("");
-    onSubmit({ companyName, status: "pending", registrationNumber: registrationNumber.trim(), legalName: legalName.trim(), businessEmail: businessEmail.trim(), documentName, documentFileId, documentLink: documentLink.trim(), contactName: contactName.trim(), contactPhone: contactPhone.trim(), submittedAt: new Date().toISOString() });
-    toast("Documents submitted, our team will review within 24 hours.");
+    onSubmit({
+      companyName,
+      status: "pending",
+      registrationNumber: registrationNumber.trim(),
+      legalName: legalName.trim(),
+      businessEmail: profile.email.trim(),
+      documentName: registration?.name,
+      documentFileId: registration?.fileId,
+      documentLink: documentLink.trim() || profile.website.trim(),
+      contactName: contactName.trim(),
+      contactPhone: profile.phone.trim(),
+      submittedAt: new Date().toISOString()
+    });
+    toast("Verification submitted for review");
   };
-  return <main className="page company-profile-page"><div className="page-title"><span className="eyebrow">COMPANY PROFILE</span><h1>{companyName}</h1><p>Manage your company details and verification status.</p></div>
-    <section className="dashboard-panel company-verification-status"><div><h2>Verification status</h2><p>Verification unlocks Professional and Advanced task categories.</p></div><span className={`company-verification-badge status-${status}`}>{status === "verified" ? <BadgeCheck size={18} /> : <i />} {statusLabel}</span></section>
-    {status === "verified" ? <div className="dashboard-panel company-verified-note"><BadgeCheck /><div><strong>Your company is verified</strong><p>You can publish tasks in all work categories.</p></div></div> : status === "pending" ? <div className="dashboard-panel company-pending-note"><Clock3 /><div><strong>Documents submitted</strong><p>Documents submitted, our team will review within 24 hours.</p></div></div> : <><button className="primary company-verify-start" type="button" onClick={() => setFormOpen(true)}>Verify My Company</button>{formOpen && <form className="form-card company-verification-form" onSubmit={submit}><div><h2>Company verification details</h2><p>Provide your registration details and one supporting document or public company link.</p></div>
-      <label>Company registration number<input required value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="e.g. 12345/2020" /></label>
-      <label>Company name as shown on papers<input required value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
-      <label>Business email<input type="email" required value={businessEmail} onChange={(event) => setBusinessEmail(event.target.value)} placeholder="info@company.co.zw" /></label>
-      <label>Upload registration document<input type="file" accept=".pdf,.jpg,.jpeg,.png" onChange={async (event) => { const file = event.target.files?.[0]; if (!file) return; const ext = file.name.split(".").pop()?.toLowerCase(); if (!(["pdf", "jpg", "jpeg", "png"].includes(ext || "")) || file.size > 5 * 1024 * 1024) { setError("Choose a PDF, JPG or PNG up to 5 MB."); return; } const id = await onUploadDocument(file); if (id) { setDocumentName(file.name); setDocumentFileId(id); setError(""); } }} /><small>{documentName || "Registration certificate or company letter · up to 5 MB"}</small></label>
-      <div className="company-or-divider"><span>OR</span></div><label>Company website or Facebook page<input type="url" value={documentLink} onChange={(event) => setDocumentLink(event.target.value)} placeholder="https://" /></label>
-      <div className="two-col"><label>Contact person name<input required value={contactName} onChange={(event) => setContactName(event.target.value)} /></label><label>Contact phone number<input required type="tel" value={contactPhone} onChange={(event) => setContactPhone(event.target.value)} /></label></div>
-      {error && <p className="field-error" role="alert">{error}</p>}<div className="company-verification-actions"><button className="secondary-btn" type="button" onClick={() => setFormOpen(false)}>Cancel</button><button className="primary" type="submit">Submit documents</button></div></form>}</>}
+
+  return <main className="page company-profile-page">
+    <div className="company-profile-heading"><div className="page-title"><span className="eyebrow">COMPANY PROFILE</span><h1>{companyName}</h1><p>Manage your company details and verification status.</p></div><span className={`company-verification-badge status-${status}`}>{status === "verified" ? <BadgeCheck size={17} /> : <i />} {statusLabel}</span></div>
+    <div className="company-profile-layout">
+      <div className="company-profile-main">
+        <form className="dashboard-panel company-details-form" onSubmit={saveProfile}>
+          <div className="company-profile-section-heading"><div><h2>Company Details</h2><p>Keep your company information current.</p></div><Building2 size={19} /></div>
+          <div className="company-details-grid">
+            <label>Company name<input value={companyName} readOnly aria-readonly="true" /></label>
+            <label>Industry<select value={draft.industry} onChange={(event) => setDraft((current) => ({ ...current, industry: event.target.value }))} required><option value="">Select industry</option>{companyIndustries.map((industry) => <option key={industry}>{industry}</option>)}</select></label>
+            <label><span><Globe size={14} /> Website</span><input type="url" value={draft.website} onChange={(event) => setDraft((current) => ({ ...current, website: event.target.value }))} placeholder="https://yourcompany.co.zw" /></label>
+            <label><span><MapPin size={14} /> Location</span><input value={draft.location} onChange={(event) => setDraft((current) => ({ ...current, location: event.target.value }))} placeholder="Harare, Zimbabwe" /></label>
+            <label><span><Mail size={14} /> Email address</span><input type="email" value={draft.email} onChange={(event) => setDraft((current) => ({ ...current, email: event.target.value }))} placeholder="contact@company.co.zw" /></label>
+            <label><span><Phone size={14} /> Phone number</span><input type="tel" value={draft.phone} onChange={(event) => setDraft((current) => ({ ...current, phone: event.target.value }))} placeholder="+263 ..." /></label>
+            <label className="company-description-field">Company description<textarea value={draft.description} onChange={(event) => setDraft((current) => ({ ...current, description: event.target.value }))} maxLength={1000} rows={4} placeholder="Describe your company, what you do, and the kind of opportunities you offer." /></label>
+          </div>
+          <div className="company-profile-form-actions"><span>{draft.description.length}/1000</span><button className="primary" type="submit"><Save size={16} /> Save changes</button></div>
+        </form>
+
+        <section className="dashboard-panel company-recent-tasks">
+          <div className="company-profile-section-heading"><div><h2>Recent Tasks</h2><p>Latest opportunities posted by your company.</p></div><button type="button" className="text-btn" onClick={() => go("company-jobs")}>View all <ChevronRight size={15} /></button></div>
+          {tasks.length ? <div className="company-profile-table-wrap"><table className="company-profile-table"><thead><tr><th>Task</th><th>Status</th><th>Applicants</th><th>Deadline</th><th>Action</th></tr></thead><tbody>{tasks.slice(0, 5).map((task) => <tr key={task.id}><td><strong>{task.title}</strong><small>{task.skill} · {money(task)}</small></td><td><span className={`status-pill ${task.verified ? "open" : "review"}`}>{task.verified ? "Open" : "In Review"}</span></td><td>{applications.filter((application) => application.taskId === task.id).length}</td><td>{task.deadline}</td><td><button type="button" className="text-btn" onClick={() => go("company-jobs")}>View</button></td></tr>)}</tbody></table></div> : <div className="empty"><BriefcaseBusiness /><h2>No tasks posted yet</h2><p>Your company’s latest task listings will appear here.</p></div>}
+        </section>
+      </div>
+
+      <aside className="company-profile-sidebar">
+        <section className="dashboard-panel company-logo-card">
+          <h2>Company Logo</h2>
+          <div className="company-logo-preview">{logoUrl ? <img src={logoUrl} alt={`${companyName} logo`} /> : <span>{companyName.trim().charAt(0).toUpperCase() || <Building2 size={30} />}</span>}</div>
+          <label className="company-logo-upload"><Upload size={15} /><span>{uploading === "logo" ? "Uploading..." : "Upload new logo"}<small>PNG, JPG or WebP · up to 2 MB</small></span><input type="file" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp" disabled={uploading !== null} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadProfileFile(file, "logo"); }} /></label>
+        </section>
+
+        <section className="dashboard-panel company-profile-overview">
+          <h2>Overview</h2>
+          <div><span>Tasks Posted</span><strong>{tasks.length}</strong></div>
+          <div><span>Interns Hired</span><strong>{hiredStudentCount}</strong></div>
+          <div className="company-completion"><div><span>Profile Completion</span><strong>{completion}%</strong></div><div className="company-completion-track"><i style={{ width: `${completion}%` }} /></div><small>{completion === 100 ? "Profile complete" : `${Math.ceil((100 - completion) / (100 / completionFields.length))} steps remaining`}</small></div>
+        </section>
+
+        <section className="dashboard-panel company-verification-documents">
+          <div className="company-profile-section-heading"><div><h2>Verification Documents</h2><p>Upload documents to verify your company.</p></div><ShieldCheck size={19} /></div>
+          <div className="company-document-list">{companyDocumentTypes.map(({ kind, label }) => {
+            const document = profile.documents.find((item) => item.kind === kind);
+            return <div className="company-document-row" key={kind}><span className={`company-document-icon ${document ? "uploaded" : ""}`}>{document ? <Check size={16} /> : <FileText size={16} />}</span><div><strong>{label}</strong><small>{document ? document.name : "Not uploaded"}</small></div>{document ? <button type="button" aria-label={`Remove ${label}`} onClick={() => void removeDocument(kind)}><Trash2 size={15} /></button> : <label className="company-document-upload" aria-label={`Upload ${label}`}><Upload size={15} /><input type="file" accept=".pdf,.jpg,.jpeg,.png,application/pdf,image/jpeg,image/png" disabled={uploading !== null} onChange={(event) => { const file = event.currentTarget.files?.[0]; event.currentTarget.value = ""; if (file) void uploadProfileFile(file, kind); }} /></label>}</div>;
+          })}</div>
+          <form className="company-verification-form" onSubmit={submitVerification}>
+            <label>Registration number<input required value={registrationNumber} onChange={(event) => setRegistrationNumber(event.target.value)} placeholder="e.g. 12345/2020" /></label>
+            <label>Legal company name<input required value={legalName} onChange={(event) => setLegalName(event.target.value)} /></label>
+            <label>Contact person<input required value={contactName} onChange={(event) => setContactName(event.target.value)} placeholder="Full name" /></label>
+            <label>Company website or verification link<input type="url" value={documentLink} onChange={(event) => setDocumentLink(event.target.value)} placeholder="https://" /></label>
+            {error && <p className="field-error" role="alert">{error}</p>}
+            <button className="primary full" type="submit" disabled={status === "pending" || status === "verified"}>{status === "pending" ? "Verification pending" : status === "verified" ? "Company verified" : "Submit for verification"}</button>
+          </form>
+          <small className="company-document-note">Uploaded files are stored in this browser prototype; a secure shared document service is not connected.</small>
+        </section>
+      </aside>
+    </div>
   </main>;
 }
 
@@ -1412,7 +1768,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, isCompanyVer
             .map((item) => item.taskId)).size : 0;
           const alreadyInvitedStudent = received.some((item) =>
             item.studentId === application.studentId
-            && item.interviewInvited
+            && (item.interviewInvited || item.status === "interview-invited")
             && taskById.get(item.taskId)?.skill === task?.skill
           );
           const candidateHistory = applications.filter((item) => item.studentId === application.studentId && item.status === "completed").map((item) => {
@@ -1424,7 +1780,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, isCompanyVer
           const topSkills = [...skillCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 3);
           const mutualSkill = task && candidateHistory.some(({ task: historyTask }) => historyTask?.skill === task.skill) ? task.skill : task?.skill;
           const interviewEligible = Boolean(task
-            && status !== "rejected"
+            && ["applied", "interview-invited"].includes(status)
             && application.studentTrack === "interview"
             && (task.level === "Professional" || task.level === "Advanced")
             && completedCount >= policy.studentCompletedTasks
@@ -1458,7 +1814,7 @@ function CompanyApplicants({ tasks, allTasks, applications, policy, isCompanyVer
               </section>
               {application.portfolio && /^https?:\/\//i.test(application.portfolio) && <a href={application.portfolio} target="_blank" rel="noopener noreferrer">View portfolio</a>}
               <div className="application-actions">
-                {status === "applied" && <>
+                {["applied", "interview-invited"].includes(status) && <>
                   <button type="button" className="primary" onClick={() => onSetStatus(application.id, "accepted")}>Accept</button>
                   <button type="button" className="secondary-btn" onClick={() => onSetStatus(application.id, "rejected")}>Reject</button>
                 </>}
@@ -1686,7 +2042,7 @@ function AdminDashboard({ tasks, applications, policy, companyVerifications, onS
 export function App() {
   const [themePreference, setThemePreference] = useState<ThemePreference>(loadThemePreference);
   const [store, setStore] = useState<Store>(loadStore);
-  const [studentProfile, setStudentProfile] = useState<StudentProfileData>(loadStudentProfile);
+  const [studentProfile, setStudentProfile] = useState<StudentProfileData>(defaultStudentProfile);
   const [certificates, setCertificates] = useState<CertificateMeta[]>(loadCertificates);
   const [certificatePreview, setCertificatePreview] = useState<{ certificate: CertificateMeta; url: string } | null>(null);
   const [companyName, setCompanyName] = useState(() => {
@@ -1713,16 +2069,14 @@ export function App() {
   const [packageSelectionOpen, setPackageSelectionOpen] = useState(false);
   const [packageSetupTier, setPackageSetupTier] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(null);
   const [adminLoginOpen, setAdminLoginOpen] = useState(false);
-  const [studentPackage, setStudentPackage] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(() => {
-    try { return (STUDENT_PACKAGES.some((item) => item.id === localStorage.getItem(`${KEY}-student-package`)) ? localStorage.getItem(`${KEY}-student-package`) : null) as typeof STUDENT_PACKAGES[number]["id"] | null; }
-    catch { return null; }
-  });
+  const [studentPackage, setStudentPackage] = useState<typeof STUDENT_PACKAGES[number]["id"] | null>(null);
   const adminLogoClicks = useRef(0);
   const adminLogoResetTimer = useRef<number | null>(null);
   const [sidePanelOpen, setSidePanelOpen] = useState(false);
   const [readCompanyCandidateIds, setReadCompanyCandidateIds] = useState<string[]>(() => {
     try { return JSON.parse(localStorage.getItem(`${KEY}-read-company-candidates`) || "[]") as string[]; } catch { return []; }
   });
+  const [readNotificationIds, setReadNotificationIds] = useState<string[]>(loadReadNotificationIds);
 
   const activateAuthenticatedUser = (user: User) => {
     setAuthUser(user);
@@ -1755,7 +2109,6 @@ export function App() {
     if (workspace === "student") {
       setStudentProfile((profile) => ({ ...profile, ...(displayName ? { name: displayName } : {}), ...(user.email ? { email: user.email } : {}) }));
       setPage("dashboard");
-      if (!studentPackage) setPackageSelectionOpen(true);
     } else {
       const company = String(metadata.company_name || displayName || user.email?.split("@")[0] || "My Company").trim();
       setCompanyName(company);
@@ -1782,6 +2135,73 @@ export function App() {
     });
     return () => subscription.unsubscribe();
   }, []);
+
+  useEffect(() => {
+    if (!supabase || !authUser || account !== "student") return;
+    let cancelled = false;
+    void supabase.from("profiles")
+      .select("package_tier,full_name,location,study_field,student_track,email,phone")
+      .eq("id", authUser.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Could not load student profile from Supabase", error);
+          setToastState({ m: "Could not load your profile from Supabase.", e: true });
+          return;
+        }
+        const tier = data?.package_tier;
+        const validTier = STUDENT_PACKAGES.some((item) => item.id === tier)
+          ? tier as typeof STUDENT_PACKAGES[number]["id"]
+          : null;
+        setStudentPackage(validTier);
+        if (!validTier) setPackageSelectionOpen(true);
+        if (data) setStudentProfile((current) => ({
+          ...current,
+          name: data.full_name || current.name,
+          location: data.location || current.location,
+          studyField: (SKILL_OPTIONS.includes(data.study_field as Skill) ? data.study_field : current.studyField) as Skill,
+          track: data.student_track === "interview" ? "interview" : "earning",
+          email: data.email || authUser.email || current.email,
+          phone: data.phone || current.phone
+        }));
+        else setPackageSelectionOpen(true);
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.id, account]);
+
+  useEffect(() => {
+    if (!supabase || !authUser || account !== "student") return;
+    let cancelled = false;
+    void supabase.from("profiles")
+      .select("package_tier,full_name,location,study_field,student_track,email,phone")
+      .eq("id", authUser.id)
+      .maybeSingle()
+      .then(({ data, error }) => {
+        if (cancelled) return;
+        if (error) {
+          console.error("Could not load student profile from Supabase", error);
+          setToastState({ m: "Could not load your profile from Supabase.", e: true });
+          return;
+        }
+        const tier = data?.package_tier;
+        const validTier = STUDENT_PACKAGES.some((item) => item.id === tier)
+          ? tier as typeof STUDENT_PACKAGES[number]["id"]
+          : null;
+        setStudentPackage(validTier);
+        if (data) setStudentProfile((current) => ({
+          ...current,
+          name: data.full_name || current.name,
+          location: data.location || current.location,
+          studyField: (SKILL_OPTIONS.includes(data.study_field as Skill) ? data.study_field : current.studyField) as Skill,
+          track: data.student_track === "interview" ? "interview" : "earning",
+          email: data.email || authUser.email || current.email,
+          phone: data.phone || current.phone
+        }));
+        else setPackageSelectionOpen(true);
+      });
+    return () => { cancelled = true; };
+  }, [authUser?.id, account]);
 
   useEffect(() => {
     if (!supabase || !authUser || authUser.user_metadata?.account_type) return;
@@ -1831,6 +2251,27 @@ export function App() {
     }
   };
 
+  const saveStudentProfile = (profile: StudentProfileData) => {
+    setStudentProfile(profile);
+    if (!supabase || !authUser) {
+      setToastState({ m: "Sign in to save your profile to Supabase.", e: true });
+      return;
+    }
+    void supabase.from("profiles").update({
+      full_name: profile.name,
+      location: profile.location,
+      study_field: profile.studyField,
+      student_track: profile.track,
+      email: profile.email,
+      phone: profile.phone
+    }).eq("id", authUser.id).then(({ error }) => {
+      if (error) {
+        console.error("Could not save student profile to Supabase", error);
+        setToastState({ m: "Could not save your profile to Supabase.", e: true });
+      }
+    });
+  };
+
   const handleAdminLogoTap = () => {
     adminLogoClicks.current += 1;
     if (adminLogoResetTimer.current !== null) window.clearTimeout(adminLogoResetTimer.current);
@@ -1854,14 +2295,6 @@ export function App() {
       setToastState({ m: "Could not save changes in this browser", e: true });
     }
   }, [store]);
-  useEffect(() => {
-    try {
-      localStorage.setItem(`${KEY}-student-profile`, JSON.stringify(studentProfile));
-    } catch (error) {
-      console.error("Could not save the student profile", error);
-      setToastState({ m: "Could not save the profile in this browser", e: true });
-    }
-  }, [studentProfile]);
   useEffect(() => {
     try {
       localStorage.setItem(`${KEY}-certificates`, JSON.stringify(certificates));
@@ -1996,8 +2429,8 @@ export function App() {
       return;
     }
     const validTransition = status === "accepted" || status === "rejected"
-      ? existing.status === "applied"
-      : status === "completed" && (existing.status === "submitted" || existing.status === "accepted");
+      ? existing.status === "applied" || existing.status === "interview-invited"
+      : status === "completed" && existing.status === "submitted";
     if (!validTransition) {
       toast("That application status change is not available", true);
       return;
@@ -2029,7 +2462,7 @@ export function App() {
 
   const withdrawStudentApplication = (applicationId: string) => {
     const existing = store.applications.find((application) => application.id === applicationId);
-    if (!existing || existing.studentId !== CURRENT_STUDENT_ID || existing.status !== "applied") {
+    if (!existing || existing.studentId !== CURRENT_STUDENT_ID || !["applied", "interview-invited"].includes(existing.status)) {
       toast("This application can no longer be withdrawn", true);
       return;
     }
@@ -2081,19 +2514,43 @@ export function App() {
       toast("Could not find the application or task", true);
       return;
     }
+    const ownedTaskIds = new Set(store.tasks
+      .filter((item) => item.mine && item.company.trim().toLowerCase() === companyName.trim().toLowerCase())
+      .map((item) => item.id));
+    if (!ownedTaskIds.has(task.id)) {
+      toast("You can only invite candidates who applied to your company's tasks", true);
+      return;
+    }
+    if (application.interviewInvited || application.status === "interview-invited") {
+      toast("An interview invitation was already sent for this application", true);
+      return;
+    }
+    if (application.status !== "applied") {
+      toast("Interview invitations are only available for active applications", true);
+      return;
+    }
+    const previousInvitation = store.applications.some((item) =>
+      item.studentId === application.studentId
+      && (item.interviewInvited || item.status === "interview-invited")
+      && ownedTaskIds.has(item.taskId)
+      && store.tasks.find((candidate) => candidate.id === item.taskId)?.skill === task.skill
+    );
+    if (previousInvitation) {
+      toast("This candidate has already received an interview invitation for this field", true);
+      return;
+    }
     const completedTasks = new Set(store.applications
       .filter((item) => item.studentId === application.studentId && item.status === "completed")
       .filter((item) => store.tasks.find((candidate) => candidate.id === item.taskId)?.skill === task.skill)
       .map((item) => item.taskId)).size;
     const companyCompleted = new Set(store.applications
-      .filter((item) => item.status === "completed")
+      .filter((item) => item.status === "completed" && ownedTaskIds.has(item.taskId))
       .filter((item) => {
         const completedTask = store.tasks.find((candidate) => candidate.id === item.taskId);
-        return completedTask?.mine && completedTask.skill === task.skill;
+        return completedTask?.skill === task.skill;
       })
       .map((item) => item.taskId)).size;
-    if (application.status === "rejected"
-      || application.studentTrack !== "interview"
+    if (application.studentTrack !== "interview"
       || (task.level !== "Professional" && task.level !== "Advanced")
       || completedTasks < store.policy.studentCompletedTasks
       || companyCompleted < store.policy.companyFilledTasks) {
@@ -2104,6 +2561,7 @@ export function App() {
       ...current,
       applications: current.applications.map((item) => item.id === applicationId ? {
         ...item,
+        status: "interview-invited",
         interviewInvited: true,
         events: [...(item.events || []), { id: "event-" + Date.now(), type: "interview-invited", actor: "company", description: "Company sent an interview invitation", at: new Date().toISOString() }]
       } : item)
@@ -2135,10 +2593,11 @@ export function App() {
 
   const saveCompanyVerification = (record: CompanyVerification) => setStore((current) => ({ ...current, companyVerifications: [...current.companyVerifications.filter((item) => item.companyName.trim().toLowerCase() !== record.companyName.trim().toLowerCase()), record] }));
   const saveCompanyVerificationDocument = async (file: File) => {
-    const id = `company-verification-${companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}`;
+    const id = `company-document-${companyName.trim().toLowerCase().replace(/[^a-z0-9]+/g, "-")}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
     try { await saveCertificateFile(id, file); return id; }
     catch (error) { console.error("Could not store company verification document", error); toast("Could not upload the verification document", true); return null; }
   };
+  const deleteCompanyProfileDocument = (fileId: string) => deleteCertificateFile(fileId);
   const downloadCompanyVerificationDocument = async (record: CompanyVerification) => {
     if (!record.documentFileId) { toast("No uploaded document is attached", true); return; }
     try {
@@ -2252,6 +2711,15 @@ export function App() {
   const detailId = page.startsWith("detail:") ? page.slice(7) : null;
   const detailTask = detailId ? store.tasks.find((task) => task.id === detailId) : null;
   const applied = detailTask ? store.applications.some((application) => application.taskId === detailTask.id && application.studentId === CURRENT_STUDENT_ID) : false;
+  const workspaceHomePage = account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview";
+  const panelPages = account === "student"
+    ? ["dashboard", "tasks", "applications", "reviews", "notifications", "badges", "profile"]
+    : account === "company"
+      ? ["company-dashboard", "company-jobs", "company-applicants", "company-candidates", "company-payouts", "company-profile"]
+      : ["admin-overview", "admin-students", "admin-companies", "admin-moderation"];
+  const isWorkspaceSubpage = page === "tasks-all" || !panelPages.includes(page);
+  const workspaceBackTarget = detailTask ? "tasks" : workspaceHomePage;
+  const workspaceBackLabel = detailTask ? "Back to tasks" : "Back to workspace";
 
   if (loading || authLoading) {
     return (
@@ -2267,6 +2735,33 @@ export function App() {
   const companyTasks = store.tasks.filter((task) => task.mine === true && task.company.trim().toLowerCase() === companyName.trim().toLowerCase());
   const unreadCandidateCount = store.applications.filter((application) => companyTasks.some((task) => task.id === application.taskId) && !readCompanyCandidateIds.includes(application.id)).length;
   const studentApplications = store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID);
+  const studentNotifications = createStudentNotifications(studentApplications, store.tasks);
+  const headerNotificationCount = account === "student"
+    ? studentNotifications.filter((notification) => !readNotificationIds.includes(notification.id)).length
+    : account === "company"
+      ? store.applications.filter((application) => companyTasks.some((task) => task.id === application.taskId) && application.status === "applied").length
+      : store.tasks.filter((task) => !task.verified).length;
+  const markNotificationRead = (id: string) => {
+    if (readNotificationIds.includes(id)) return;
+    const updated = [...readNotificationIds, id];
+    try {
+      localStorage.setItem(READ_NOTIFICATIONS_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.error("Could not save notification read state", error);
+      setToastState({ m: "Could not save notification read state.", e: true });
+    }
+    setReadNotificationIds(updated);
+  };
+  const markAllNotificationsRead = () => {
+    const updated = [...new Set([...readNotificationIds, ...studentNotifications.map((notification) => notification.id)])];
+    try {
+      localStorage.setItem(READ_NOTIFICATIONS_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.error("Could not save notification read state", error);
+      setToastState({ m: "Could not save notification read state.", e: true });
+    }
+    setReadNotificationIds(updated);
+  };
   const completedByField = Object.fromEntries(SKILL_OPTIONS.map((skill) => [
     skill,
     new Set(store.applications
@@ -2295,14 +2790,77 @@ export function App() {
     setWelcomePageOpen(false);
   }} />;
   if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onBack={() => { setAccessWorkspace(null); setWelcomePageOpen(true); }} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} />;
-  if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={(profile) => {
-    setStudentProfile(profile);
-    setStudentPackage(packageSetupTier);
-    setLevelFilter((current) => current === "All levels" || taskLevelRank[current] <= packageRank[packageSetupTier] ? current : "All levels");
-    try { localStorage.setItem(`${KEY}-student-package`, packageSetupTier); } catch { /* package remains active for this session */ }
-    setPackageSetupTier(null);
-    setAccount("student");
-    setPage("dashboard");
+  if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={async (profile, cvFile) => {
+    if (!supabase || !authUser) {
+      setToastState({ m: "Sign in with Supabase before activating a package.", e: true });
+      return;
+    }
+    const needsCv = packageSetupTier === "professional" || packageSetupTier === "advanced";
+    let uploadedObjectPath: string | undefined;
+    let previousCvId: string | undefined;
+    try {
+      const { data: existing, error: lookupError } = await supabase.from("profiles").select("id").eq("id", authUser.id).maybeSingle();
+      if (lookupError) throw lookupError;
+      const profileRow = {
+        role: "student",
+        full_name: profile.name,
+        location: profile.location,
+        study_field: profile.studyField,
+        student_track: profile.track,
+        package_tier: packageSetupTier,
+        interview_track_enabled: needsCv,
+        email: profile.email,
+        phone: profile.phone,
+        profile_visibility: "private"
+      };
+      if (existing) {
+        const { role: _role, ...profileUpdate } = profileRow;
+        const { error } = await supabase.from("profiles").update(profileUpdate).eq("id", authUser.id);
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("profiles").insert({ id: authUser.id, ...profileRow });
+        if (error) throw error;
+      }
+
+      if (needsCv) {
+        if (!cvFile) throw new Error("Upload a PDF or DOCX CV to activate this package.");
+        const extension = cvFile.name.toLowerCase().endsWith(".docx") ? "docx" : "pdf";
+        const cvId = crypto.randomUUID();
+        uploadedObjectPath = `${authUser.id}/${cvId}.${extension}`;
+        const { data: previous } = await supabase.from("student_cvs").select("id").eq("student_id", authUser.id).eq("is_current", true).maybeSingle();
+        const { data: latest } = await supabase.from("student_cvs").select("version").eq("student_id", authUser.id).order("version", { ascending: false }).limit(1).maybeSingle();
+        previousCvId = previous?.id;
+        const nextVersion = (latest?.version || 0) + 1;
+        const { error: archiveError } = await supabase.from("student_cvs").update({ is_current: false }).eq("student_id", authUser.id).eq("is_current", true);
+        if (archiveError) throw archiveError;
+        const { error: uploadError } = await supabase.storage.from("student-cvs").upload(uploadedObjectPath, cvFile, { contentType: cvFile.type, upsert: false });
+        if (uploadError) throw uploadError;
+        const { error: recordError } = await supabase.from("student_cvs").insert({
+          id: cvId,
+          student_id: authUser.id,
+          object_path: uploadedObjectPath,
+          file_name: cvFile.name,
+          content_type: cvFile.type,
+          file_size_bytes: cvFile.size,
+          version: nextVersion,
+          is_current: true
+        });
+        if (recordError) throw recordError;
+      }
+
+      setStudentProfile(profile);
+      setStudentPackage(packageSetupTier);
+      setLevelFilter((current) => current === "All levels" || taskLevelRank[current] <= packageRank[packageSetupTier] ? current : "All levels");
+      setPackageSetupTier(null);
+      setAccount("student");
+      setPage("dashboard");
+      setToastState({ m: needsCv ? "Profile and CV saved to Supabase." : "Profile saved to Supabase." });
+    } catch (error) {
+      if (uploadedObjectPath) await supabase.storage.from("student-cvs").remove([uploadedObjectPath]);
+      if (previousCvId) await supabase.from("student_cvs").update({ is_current: true }).eq("id", previousCvId);
+      console.error("Could not save the student package to Supabase", error);
+      setToastState({ m: error instanceof Error ? error.message : "Could not save your profile to Supabase.", e: true });
+    }
   }} />;
   if (packageSelectionOpen) return <StudentPackagePage onBack={() => {
     setPackageSelectionOpen(false);
@@ -2316,40 +2874,44 @@ export function App() {
   return (
     <div className={`app-shell account-${account} panel-page-${page}`}>
       <header className="topbar">
-        <button className="brand-btn" onClick={(event) => {
-          if ((event.target as HTMLElement).closest(".brand-mark")) { handleAdminLogoTap(); return; }
-          go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview");
-        }}>
-          <span className="brand-mark"><GraduationCap size={27} strokeWidth={2.4} /></span>
-          <span className="brand-name">GradLink ZW</span>
-        </button>
+        <div className="topbar-brand-group">
+          <button type="button" className={`side-panel-toggle ${sidePanelOpen ? "is-open" : ""}`} aria-label={sidePanelOpen ? "Close side panel" : "Open side panel"} aria-expanded={sidePanelOpen} aria-controls="workspace-side-panel" onClick={() => setSidePanelOpen((value) => !value)}><Menu size={21} /></button>
+          <button className="brand-btn" onClick={(event) => {
+            if ((event.target as HTMLElement).closest(".brand-mark")) { handleAdminLogoTap(); return; }
+            go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview");
+          }}>
+            <span className="brand-mark"><GraduationCap size={27} strokeWidth={2.4} /></span>
+            <span className="brand-name">GradLink ZW</span>
+          </button>
+        </div>
 
         <div className="top-actions">
           <span className="account-label">{account === "student" ? "Student account" : account === "company" ? "Company account" : "Admin account"}</span>
           <button className="login-preview-link" type="button" onClick={() => setWelcomePageOpen(true)}>Welcome page</button>
-          <button aria-label="Notifications" onClick={() => {
-            const updates = account === "student"
-              ? studentApplications.filter((application) => application.status !== "applied" || application.interviewInvited).length
-              : account === "company"
-                ? store.applications.filter((application) => companyTasks.some((task) => task.id === application.taskId) && application.status === "applied").length
-                : store.tasks.filter((task) => !task.verified).length;
-            toast(account === "student" ? `${updates} application update${updates === 1 ? "" : "s"}. Open your profile to review.` : account === "company" ? `${updates} application${updates === 1 ? "" : "s"} waiting for review.` : `${updates} task listing${updates === 1 ? "" : "s"} waiting for verification.`);
-          }}><Bell size={20} /></button>
+          <button className="header-notification-button" type="button" aria-label={headerNotificationCount ? `Notifications, ${headerNotificationCount} unread` : "Notifications"} onClick={() => {
+            if (account === "student") {
+              go("notifications");
+              return;
+            }
+            const updates = account === "company"
+              ? store.applications.filter((application) => companyTasks.some((task) => task.id === application.taskId) && application.status === "applied").length
+              : store.tasks.filter((task) => !task.verified).length;
+            toast(account === "company" ? `${updates} application${updates === 1 ? "" : "s"} waiting for review.` : `${updates} task listing${updates === 1 ? "" : "s"} waiting for verification.`);
+          }}><Bell size={20} />{headerNotificationCount > 0 && <span className="header-notification-count" aria-hidden="true">{headerNotificationCount > 99 ? "99+" : headerNotificationCount}</span>}</button>
+          {isWorkspaceSubpage && <WorkspaceBackButton inHeader label={workspaceBackLabel} onClick={() => go(workspaceBackTarget)} />}
           {authUser && <button type="button" className="signout-action" onClick={signOut} title={`Sign out ${authUser.email || "of GradLink"}`}><LogOut size={17} /><span>Sign out</span></button>}
           <Avatar initials={account === "student" ? initialsFromName(studentProfile.name) : account === "company" ? initialsFromName(companyName) : "AD"} src={account === "student" ? studentProfile.avatarDataUrl : undefined} />
         </div>
       </header>
 
-      {!detailTask && page !== (account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview") && <div className="workspace-back-row"><button type="button" className="back-btn" onClick={() => go(account === "student" ? "dashboard" : account === "company" ? "company-dashboard" : "admin-overview")}><ArrowLeft size={18} /> Back to dashboard</button></div>}
-
       {account === "student" && (
         <>
           {page === "dashboard" && <StudentDashboard profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} packageTier={studentPackage} isCompanyVerified={(name) => companyIsVerified(name, store.companyVerifications)} go={go} />}
           {page === "reviews" && <StudentReviews applications={studentApplications} tasks={store.tasks} />}
-          {page === "applications" && <StudentSidePanel page="applications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
-          {page === "notifications" && <StudentSidePanel page="notifications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
-          {page === "badges" && <StudentSidePanel page="badges" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
-          {page === "tasks" && (
+          {page === "applications" && <StudentSidePanel page="applications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} notifications={studentNotifications} readNotificationIds={readNotificationIds} onMarkNotificationRead={markNotificationRead} onMarkAllNotificationsRead={markAllNotificationsRead} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
+          {page === "notifications" && <StudentSidePanel page="notifications" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} notifications={studentNotifications} readNotificationIds={readNotificationIds} onMarkNotificationRead={markNotificationRead} onMarkAllNotificationsRead={markAllNotificationsRead} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
+          {page === "badges" && <StudentSidePanel page="badges" profile={studentProfile} applications={studentApplications} tasks={store.tasks} certificates={certificates} policy={store.policy} interviewFields={interviewFields} notifications={studentNotifications} readNotificationIds={readNotificationIds} onMarkNotificationRead={markNotificationRead} onMarkAllNotificationsRead={markAllNotificationsRead} go={go} onSubmitWork={submitStudentWork} onWithdraw={withdrawStudentApplication} />}
+          {(page === "tasks" || page === "tasks-all") && (
             <main className="page feed-page">
               <div className="search-box">
                 <Search size={19} />
@@ -2456,7 +3018,7 @@ export function App() {
                 interviewFields={interviewFields}
                 certificates={certificates}
                 canInterview={studentPackage === "professional" || studentPackage === "advanced"}
-                onSave={setStudentProfile}
+                onSave={saveStudentProfile}
                 onUploadCertificate={uploadCertificates}
                 onRemoveCertificate={removeCertificate}
                 onOpenCertificate={openCertificate}
@@ -2464,7 +3026,7 @@ export function App() {
               />
             </>
           )}
-          {detailTask && <Detail task={detailTask} applied={applied} interviewTrack={studentProfile.track === "interview"} onBack={() => go("tasks")} onApply={() => apply(detailTask)} />}
+          {detailTask && <Detail task={detailTask} applied={applied} interviewTrack={studentProfile.track === "interview"} onApply={() => apply(detailTask)} />}
         </>
       )}
 
@@ -2497,8 +3059,8 @@ export function App() {
               go={go}
             />
           )}
-          {page === "company-candidates" && <CompanyCandidates tasks={companyTasks} applications={store.applications} go={go} />}
-          {page === "company-profile" && <CompanyProfile companyName={companyName} verification={store.companyVerifications.find((record) => record.companyName.trim().toLowerCase() === companyName.trim().toLowerCase())} onSubmit={saveCompanyVerification} onUploadDocument={saveCompanyVerificationDocument} toast={toast} />}
+          {page === "company-candidates" && <CompanyCandidates tasks={companyTasks} allTasks={store.tasks} applications={store.applications} policy={store.policy} onInviteInterview={inviteToInterview} go={go} />}
+          {page === "company-profile" && <CompanyProfile key={companyName} companyName={companyName} verification={store.companyVerifications.find((record) => record.companyName.trim().toLowerCase() === companyName.trim().toLowerCase())} tasks={companyTasks} applications={store.applications} onSubmit={saveCompanyVerification} onUploadDocument={saveCompanyVerificationDocument} onDeleteDocument={deleteCompanyProfileDocument} onReadDocument={readCertificateFile} go={go} toast={toast} />}
           {page === "company-payouts" && <CompanyPayouts tasks={companyTasks} applications={store.applications} />}
         </>
       )}
@@ -2536,7 +3098,7 @@ export function App() {
         </>
       )}
 
-      {!detailTask && <DashboardNavigation account={account} page={page} go={go} candidateCount={account === "company" ? unreadCandidateCount : 0} notificationCount={store.applications.filter((application) => application.studentId === CURRENT_STUDENT_ID && (application.interviewInvited || application.status === "accepted")).length} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} profileName={studentProfile.name} profilePicture={studentProfile.avatarDataUrl} />}
+      {!detailTask && <DashboardNavigation account={account} page={page} go={go} candidateCount={account === "company" ? unreadCandidateCount : 0} notificationCount={account === "student" ? studentNotifications.filter((notification) => !readNotificationIds.includes(notification.id)).length : 0} open={sidePanelOpen} onToggle={() => setSidePanelOpen((value) => !value)} themePreference={themePreference} onThemeChange={chooseTheme} profileName={studentProfile.name} profilePicture={studentProfile.avatarDataUrl} />}
 
       <AnimatePresence>{modal && <SignupPromptModal task={modal} onClose={() => setModal(null)} onSignup={() => { setModal(null); setAccessWorkspace("student"); }} />}</AnimatePresence>
       {certificatePreview && <CertificatePreview certificate={certificatePreview.certificate} url={certificatePreview.url} onClose={closeCertificatePreview} />}
