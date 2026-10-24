@@ -417,11 +417,11 @@ function WorkspaceBackButton({ label, onClick, inHeader = false }: { label: stri
   return inHeader ? button : <div className="workspace-back-row">{button}</div>;
 }
 
-function WelcomePage({ onBack, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onBack: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
+function WelcomePage({ onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
   const [selected, setSelected] = useState<"student" | "company">("student");
   const workspaceLabel = selected === "student" ? "Student" : "Company";
   return <main className="login-preview-page">
-    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBack}>Back to workspace</button></div>
+    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div></div>
     <section className="login-intro login-standalone" aria-label="Welcome to GradLink">
       <div className="login-animation" aria-hidden="true">
         <img className="login-reference-backdrop" src="/login-orbits.jpg" alt="" />
@@ -448,7 +448,7 @@ function WelcomePage({ onBack, onContinue, onAdminLogoTap, themePreference, onTh
   </main>;
 }
 
-function AccountAccessPage({ workspace, onBack, onAuthenticate, onGoogleSignIn }: { workspace: "student" | "company"; onBack: () => void; onAuthenticate: (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string) => Promise<{ error?: string; message?: string }>; onGoogleSignIn: () => void }) {
+function AccountAccessPage({ workspace, onAuthenticate, onGoogleSignIn }: { workspace: "student" | "company"; onAuthenticate: (workspace: "student" | "company", mode: "create" | "signin", name: string, email: string, password: string) => Promise<{ error?: string; message?: string }>; onGoogleSignIn: () => void }) {
   const [mode, setMode] = useState<"create" | "signin">("signin");
   const [name, setName] = useState("");
   const emailKey = `${KEY}-remembered-email-${workspace}`;
@@ -459,10 +459,9 @@ function AccountAccessPage({ workspace, onBack, onAuthenticate, onGoogleSignIn }
   const [passwordError, setPasswordError] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [submitting, setSubmitting] = useState(false);
-  const [showGoogleSetup, setShowGoogleSetup] = useState(false);
   const isStudent = workspace === "student";
   return <main className="login-preview-page account-access-page">
-    <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span></div><button className="secondary-btn" type="button" onClick={onBack}>Back</button></div>
+    <div className="login-preview-top"><div className="login-brand-group"><span className="brand"><GraduationCap size={30} /> GradLink <span>ZW</span></span></div></div>
     <section className="access-card" aria-labelledby="access-title">
       <span className="eyebrow">{isStudent ? "STUDENT ACCESS" : "COMPANY ACCESS"}</span>
       <h1 id="access-title">{mode === "create" ? "Create your account" : "Sign in to your account"}</h1>
@@ -477,9 +476,9 @@ function AccountAccessPage({ workspace, onBack, onAuthenticate, onGoogleSignIn }
         <button className="primary full access-submit" type="submit" disabled={submitting}>{submitting ? "Please wait…" : mode === "create" ? "Create account" : "Sign in"} {!submitting && <ArrowRight size={16} />}</button>
       </form>
       {authMessage && <p className="auth-feedback" role="status">{authMessage}</p>}
-      {mode === "signin" && <><div className="access-divider"><span>or</span></div><button className="google-signin-btn" type="button" onClick={onGoogleSignIn} disabled={submitting}><svg className="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.6-4 6v5h6.5c3.8-3.5 6.1-8.6 6.1-14.7Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.5-5c-1.8 1.2-4.1 1.9-7 1.9-5.3 0-9.8-3.6-11.4-8.4H5.9v5.2C9.3 39.5 16.1 44 24 44Z"/><path fill="#FBBC05" d="M12.6 27.7a12.1 12.1 0 0 1 0-7.4v-5.2H5.9a20 20 0 0 0 0 17.8l6.7-5.2Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4 16.1 4 9.3 8.5 5.9 15.1l6.7 5.2c1.6-4.8 6.1-8.2 11.4-8.2Z"/></svg>Continue with Google</button><details className="google-setup-help" open={showGoogleSetup} onToggle={(event) => setShowGoogleSetup(event.currentTarget.open)}><summary>Set up Google sign-in</summary><div className="google-setup-content"><p>Google creates the OAuth credentials; add them to Supabase so the button can sign students and companies in.</p><ol><li><a href="https://console.cloud.google.com/auth/clients" target="_blank" rel="noreferrer">Create a Web application OAuth client in Google Cloud</a>.</li><li>Google Authorized JavaScript origins: <code>http://localhost:5173</code> and <code>http://127.0.0.1:5173</code>. Add your deployed website origin when available.</li><li>Google Authorized redirect URI: <code>https://bmiteaafbxhvgbrfiafr.supabase.co/auth/v1/callback</code>.</li><li><a href="https://supabase.com/dashboard/project/bmiteaafbxhvgbrfiafr/auth/providers" target="_blank" rel="noreferrer">Open GradLink's Supabase Google provider</a>, enable Google, and paste the Client ID and Client Secret there.</li><li>In Supabase Auth URL Configuration, allow <code>http://localhost:5173</code>, <code>http://127.0.0.1:5173</code>, and your deployed app URL.</li></ol><p className="google-setup-security">Keep the Google Client Secret in Supabase only. Do not put it in this app or a <code>VITE_</code> environment variable.</p></div></details></>}
+      {mode === "signin" && <><div className="access-divider"><span>or</span></div><button className="google-signin-btn" type="button" onClick={onGoogleSignIn} disabled={submitting}><svg className="google-mark" viewBox="0 0 48 48" aria-hidden="true"><path fill="#4285F4" d="M43.6 24.5c0-1.4-.1-2.8-.4-4.1H24v7.8h11c-.5 2.5-1.9 4.6-4 6v5h6.5c3.8-3.5 6.1-8.6 6.1-14.7Z"/><path fill="#34A853" d="M24 44c5.5 0 10.1-1.8 13.5-4.8l-6.5-5c-1.8 1.2-4.1 1.9-7 1.9-5.3 0-9.8-3.6-11.4-8.4H5.9v5.2C9.3 39.5 16.1 44 24 44Z"/><path fill="#FBBC05" d="M12.6 27.7a12.1 12.1 0 0 1 0-7.4v-5.2H5.9a20 20 0 0 0 0 17.8l6.7-5.2Z"/><path fill="#EA4335" d="M24 12.1c3 0 5.7 1 7.8 3.1l5.8-5.8C34.1 6.1 29.5 4 24 4 16.1 4 9.3 8.5 5.9 15.1l6.7 5.2c1.6-4.8 6.1-8.2 11.4-8.2Z"/></svg>Continue with Google</button></>}
       <p className="access-switch">{mode === "create" ? "Already have an account?" : "New to GradLink?"} <button type="button" onClick={() => setMode(mode === "create" ? "signin" : "create")}>{mode === "create" ? "Sign in" : "Create account"}</button></p>
-      <small className="access-prototype-note">{supabaseConfigured ? "Your account session is managed securely by Supabase." : "Authentication is not configured yet. Add your Supabase project settings to sign in."}</small>
+      {!supabaseConfigured && <small className="access-prototype-note">Sign-in is temporarily unavailable. Please try again later.</small>}
     </section>
   </main>;
 }
@@ -2785,11 +2784,11 @@ export function App() {
     : [];
 
   if (adminLoginOpen) return <AdminLoginPage onBack={() => setAdminLoginOpen(false)} onSubmit={() => toast("Admin authentication is not connected yet.", true)} />;
-  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onBack={() => setWelcomePageOpen(false)} onContinue={(workspace) => {
+  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onContinue={(workspace) => {
     setAccessWorkspace(workspace);
     setWelcomePageOpen(false);
   }} />;
-  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onBack={() => { setAccessWorkspace(null); setWelcomePageOpen(true); }} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} />;
+  if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} />;
   if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={async (profile, cvFile) => {
     if (!supabase || !authUser) {
       setToastState({ m: "Sign in with Supabase before activating a package.", e: true });
@@ -2887,7 +2886,6 @@ export function App() {
 
         <div className="top-actions">
           <span className="account-label">{account === "student" ? "Student account" : account === "company" ? "Company account" : "Admin account"}</span>
-          <button className="login-preview-link" type="button" onClick={() => setWelcomePageOpen(true)}>Welcome page</button>
           <button className="header-notification-button" type="button" aria-label={headerNotificationCount ? `Notifications, ${headerNotificationCount} unread` : "Notifications"} onClick={() => {
             if (account === "student") {
               go("notifications");

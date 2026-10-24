@@ -29,7 +29,9 @@ VITE_SUPABASE_ANON_KEY=your-publishable-or-anon-key
 
 Restart the Vite dev server after changing environment variables. Never put a Supabase `service_role` key in this client app.
 
-In Supabase **Authentication → URL Configuration**, add your local app URLs (`http://localhost:5173` and `http://127.0.0.1:5173`) and your deployed origin to the redirect allow list. Enable email/password under **Authentication → Sign In / Providers**. Email confirmation behavior is controlled by the Supabase project's email settings.
+For the deployed Vercel site, add the same two variables in **Vercel → Project → Settings → Environment Variables** for Production (and Preview if you test preview deployments), then redeploy. A local `.env` file is not uploaded to Vercel. If the sign-in page says Supabase settings are missing, the deployed build does not have one or both variables.
+
+In Supabase **Authentication → URL Configuration**, add your local app URLs (`http://localhost:5173/**` and `http://127.0.0.1:5173/**`) and your deployed origin to the redirect allow list. The current Vercel deployment is `https://gradlink-60vb36w6c-shayz.vercel.app/**`. Enable email/password under **Authentication → Sign In / Providers**. Email confirmation behavior is controlled by the Supabase project's email settings.
 
 To enable Google, configure a Google OAuth web client and enter its client ID and secret under Supabase **Authentication → Sign In / Providers → Google**. Set the Google authorized JavaScript origin to the app origin and the authorized redirect URI to the callback URL shown on that Supabase provider page. The app redirects back to its current origin after Google authentication.
 
