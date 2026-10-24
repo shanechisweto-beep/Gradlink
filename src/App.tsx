@@ -417,11 +417,11 @@ function WorkspaceBackButton({ label, onClick, inHeader = false }: { label: stri
   return inHeader ? button : <div className="workspace-back-row">{button}</div>;
 }
 
-function WelcomePage({ onBackToWorkspace, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { onBackToWorkspace: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
+function WelcomePage({ showBackToWorkspace, onBackToWorkspace, onContinue, onAdminLogoTap, themePreference, onThemeChange }: { showBackToWorkspace: boolean; onBackToWorkspace: () => void; onContinue: (workspace: "student" | "company") => void; onAdminLogoTap: () => void; themePreference: ThemePreference; onThemeChange: (preference: ThemePreference) => void }) {
   const [selected, setSelected] = useState<"student" | "company">("student");
   const workspaceLabel = selected === "student" ? "Student" : "Company";
   return <main className="login-preview-page">
-    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div><button className="secondary-btn" type="button" onClick={onBackToWorkspace}>Back to workspace</button></div>
+    <div className="login-preview-top"><div className="login-brand-group"><button type="button" className="welcome-admin-logo" aria-label="GradLink logo" onClick={onAdminLogoTap}><GraduationCap size={30} /></button><span className="brand">GradLink <span>ZW</span></span><ThemeModeControl preference={themePreference} onChange={onThemeChange} className="login-theme-control" /></div>{showBackToWorkspace && <button className="secondary-btn" type="button" onClick={onBackToWorkspace}>Back to workspace</button>}</div>
     <section className="login-intro login-standalone" aria-label="Welcome to GradLink">
       <div className="login-animation" aria-hidden="true">
         <img className="login-reference-backdrop" src="/login-orbits.jpg" alt="" />
@@ -2094,6 +2094,7 @@ export function App() {
   const [modal, setModal] = useState<Task | null>(null);
   const [toastState, setToastState] = useState<{ m: string; e?: boolean } | null>(null);
   const [welcomePageOpen, setWelcomePageOpen] = useState(false);
+  const [showWorkspaceReturn, setShowWorkspaceReturn] = useState(false);
   const [accessWorkspace, setAccessWorkspace] = useState<"student" | "company" | null>(null);
   const [passwordRecoveryMode, setPasswordRecoveryMode] = useState(false);
   const [packageSelectionOpen, setPackageSelectionOpen] = useState(false);
@@ -2132,6 +2133,7 @@ export function App() {
     }
     setAccount(workspace);
     setWelcomePageOpen(false);
+    setShowWorkspaceReturn(false);
     setAccessWorkspace(null);
     setPackageSelectionOpen(false);
     setPackageSetupTier(null);
@@ -2163,6 +2165,7 @@ export function App() {
         if (event === "INITIAL_SESSION" || event === "SIGNED_IN" || event === "USER_UPDATED") activateAuthenticatedUser(session.user);
       } else {
         setAuthUser(null);
+        setShowWorkspaceReturn(false);
         setPasswordRecoveryMode(false);
         if (event === "INITIAL_SESSION" || event === "SIGNED_OUT") {
           setWelcomePageOpen(true);
@@ -2854,9 +2857,10 @@ export function App() {
     : [];
 
   if (adminLoginOpen) return <AdminLoginPage onBack={() => setAdminLoginOpen(false)} onSubmit={() => toast("Admin authentication is not connected yet.", true)} />;
-  if (welcomePageOpen) return <WelcomePage themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onBackToWorkspace={() => { void returnToWorkspaceSignIn(); }} onContinue={(workspace) => {
+  if (welcomePageOpen) return <WelcomePage showBackToWorkspace={showWorkspaceReturn && Boolean(authUser)} themePreference={themePreference} onThemeChange={chooseTheme} onAdminLogoTap={handleAdminLogoTap} onBackToWorkspace={() => { void returnToWorkspaceSignIn(); }} onContinue={(workspace) => {
     setAccessWorkspace(workspace);
     setWelcomePageOpen(false);
+    setShowWorkspaceReturn(false);
   }} />;
   if (accessWorkspace) return <AccountAccessPage workspace={accessWorkspace} recoveryMode={passwordRecoveryMode} onAuthenticate={authenticateWithEmailPassword} onGoogleSignIn={() => signInWithGoogle(accessWorkspace)} onRequestPasswordReset={requestPasswordReset} onSetNewPassword={setRecoveredPassword} />;
   if (packageSetupTier) return <StudentPackageDetailsPage packageId={packageSetupTier} profile={studentProfile} onBack={() => { setPackageSetupTier(null); setPackageSelectionOpen(true); }} onSubmit={async (profile, cvFile) => {
@@ -2956,6 +2960,7 @@ export function App() {
 
         <div className="top-actions">
           <span className="account-label">{account === "student" ? "Student account" : account === "company" ? "Company account" : "Admin account"}</span>
+          {authUser && <button className="login-preview-link" type="button" onClick={() => { setShowWorkspaceReturn(true); setWelcomePageOpen(true); }}>Welcome page</button>}
           <button className="header-notification-button" type="button" aria-label={headerNotificationCount ? `Notifications, ${headerNotificationCount} unread` : "Notifications"} onClick={() => {
             if (account === "student") {
               go("notifications");
